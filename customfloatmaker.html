@@ -1,0 +1,5215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Custom Float Maker</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101215;
+      --panel: #181c21;
+      --panel-border: #2b323b;
+      --canvas: #0f1318;
+      --text: #e8eef5;
+      --muted: #a6b2bf;
+      --accent: #7ec6ff;
+      --ok: #93d38a;
+      --warn: #e5ba63;
+      --err: #ef7b7b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      display: flex;
+      position: relative;
+    }
+
+    .panel {
+      width: 250px;
+      height: 100vh;
+      padding: 16px;
+      overflow-y: auto;
+      background: var(--panel);
+      border-right: 1px solid var(--panel-border);
+      font-size: 12px;
+      transition: width 0.18s ease, padding 0.18s ease, border-right-color 0.18s ease;
+    }
+
+    .panel > * {
+      transition: opacity 0.12s ease;
+    }
+
+    body.panel-collapsed .panel {
+      width: 0;
+      padding-left: 0;
+      padding-right: 0;
+      border-right-color: transparent;
+      overflow: hidden;
+    }
+
+    body.panel-collapsed .panel > * {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #panelEdgeTrigger {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 14px;
+      z-index: 30;
+      background: transparent;
+    }
+
+    body:not(.panel-collapsed) #panelEdgeTrigger {
+      width: 0;
+      pointer-events: none;
+    }
+
+    .panel h1 {
+      margin: 0 0 6px;
+      font-size: 18px;
+    }
+
+    .panel p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .section {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--panel-border);
+    }
+
+    .section h2 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .control {
+      margin-bottom: 10px;
+    }
+
+    .control label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+
+    .label-value {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .control label[data-inline-value]::after {
+      content: attr(data-inline-value);
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .control input,
+    .control select {
+      width: 100%;
+      padding: 7px 8px;
+      border: 1px solid #3a424d;
+      background: #11161c;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .control input[type="range"] {
+      padding: 0;
+    }
+
+    .control-inline {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+
+    .check input {
+      width: auto;
+    }
+
+    .value {
+      display: none;
+    }
+
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    button {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid #3a424d;
+      background: #232a33;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      background: #2a3440;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
+
+    .status {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 4;
+      max-width: min(420px, calc(100% - 24px));
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(10, 14, 18, 0.9);
+      font-size: 11px;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      pointer-events: auto;
+    }
+
+    .status .status-link {
+      color: var(--accent);
+      text-decoration: underline;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .workspace {
+      flex: 1;
+      min-width: 0;
+      height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(320px, 40%) minmax(420px, 60%);
+      gap: 0;
+    }
+
+    .pane {
+      position: relative;
+      min-width: 0;
+      height: 100%;
+      border-left: 1px solid var(--panel-border);
+      background: var(--canvas);
+    }
+
+    .pane:first-child {
+      border-left: 0;
+    }
+
+    .pane-title {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 2;
+      padding: 6px 9px;
+      background: rgba(10, 14, 18, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 12px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .viewport-controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+      padding: 6px 8px;
+      background: rgba(10, 14, 18, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .viewport-stage {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 3;
+      padding: 6px 9px;
+      background: rgba(10, 14, 18, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 11px;
+      color: var(--text);
+      pointer-events: none;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .viewport-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      width: 100%;
+      padding: 0;
+      background: transparent;
+      border: 0;
+      font-size: 11px;
+      color: var(--muted);
+      user-select: none;
+      text-align: right;
+    }
+
+    .viewport-toggle input {
+      width: auto;
+      margin: 0;
+    }
+
+    .viewport-toggle select {
+      width: 100%;
+      min-width: 96px;
+      padding: 3px 6px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(18, 24, 31, 0.95);
+      color: var(--text);
+      font-size: 11px;
+      text-align: left;
+    }
+
+    #profileCanvas,
+    #viewport {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #profileCanvas {
+      background:
+        linear-gradient(transparent 24px, rgba(255,255,255,0.04) 25px),
+        linear-gradient(90deg, transparent 24px, rgba(255,255,255,0.04) 25px),
+        #121821;
+      background-size: 25px 25px, 25px 25px, auto;
+    }
+
+    #viewport canvas {
+      display: block;
+    }
+
+    .metrics {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--panel-border);
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .metrics code {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Custom Float Maker</h1>
+
+
+    <div class="section">
+      <h2>Profile Preset</h2>
+      <div class="control">
+        <select id="preset">
+          <option value="custom">Custom</option>
+          <option value="circle">Circle</option>
+          <option value="ellipse">Ellipse</option>
+          <option value="egg">Egg</option>
+          <option value="cigar">Cigar</option>
+          <option value="teardrop">Teardrop</option>
+          <option value="tictac">Tic-tac</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="length">
+          <span>Profile Length</span>
+          <span class="label-value" id="lengthVal"></span>
+        </label>
+        <input id="length" type="range" min="10" max="500" value="216.67" />
+      </div>
+
+      <div class="control" hidden>
+        <label for="thickness">
+          <span>Profile Thickness</span>
+          <span class="label-value" id="thicknessVal"></span>
+        </label>
+        <input id="thickness" type="range" min="40" max="220" step="0.1" value="100" />
+      </div>
+
+      <div class="control">
+        <label for="p">
+          <span>Roundness p</span>
+          <span class="label-value" id="pVal"></span>
+        </label>
+        <input id="p" type="range" min="0.6" max="10" step="0.01" value="2" />
+      </div>
+
+      <div class="control">
+        <label for="q">
+          <span>End Taper q</span>
+          <span class="label-value" id="qVal"></span>
+        </label>
+        <input id="q" type="range" min="0.6" max="10" step="0.01" value="2" />
+      </div>
+
+      <div class="control">
+        <label for="alpha">Asymmetry α</label>
+        <input id="alpha" type="range" min="-0.9" max="0.9" step="0.01" value="0" />
+        <div class="value" id="alphaVal"></div>
+      </div>
+
+      <div class="control">
+        <label for="beta">Bulge β</label>
+        <input id="beta" type="range" min="-0.9" max="5" step="0.01" value="0" />
+        <div class="value" id="betaVal"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Float</h2>
+      <div class="control">
+        <label for="buoyancy">Buoyancy (g)</label>
+        <input id="buoyancy" type="number" min="1" max="99" step="1" value="20" />
+      </div>
+
+      <div class="control-inline">
+        <div class="control">
+          <label for="wallThickness">Shell Thickness</label>
+          <input id="wallThickness" type="number" min="0.2" step="0.1" value="0.8" />
+        </div>
+        <div class="control">
+          <label for="bore">Bore (mm)</label>
+          <input id="bore" type="number" min="0.5" step="0.1" value="2.5" />
+        </div>
+      </div>
+
+      <div class="control-inline">
+        <div class="control">
+          <label for="ledD">LED D (mm)</label>
+          <input id="ledD" type="number" min="1" step="0.1" value="6" />
+        </div>
+        <div class="control">
+          <label for="ledLen">LED L (mm)</label>
+          <input id="ledLen" type="number" min="1" step="0.1" value="18" />
+        </div>
+      </div>
+
+      <div class="control-inline">
+        <div class="control">
+          <label for="tripodAttachZ">Tripod Z1 (mm)</label>
+          <input id="tripodAttachZ" type="number" min="1" step="0.5" value="10" />
+        </div>
+        <div class="control">
+          <label for="tripodAttachZ2">Tripod Z2 (mm)</label>
+          <input id="tripodAttachZ2" type="number" min="0" step="0.5" value="0" />
+        </div>
+      </div>
+
+      <div class="control-inline">
+        <div class="control">
+          <label for="legThickness">Tripod Square</label>
+          <input id="legThickness" type="number" min="0.2" step="0.1" value="1.6" />
+        </div>
+        <div class="control">
+          <label for="tripodOffsetDeg">Offset (deg)</label>
+          <input id="tripodOffsetDeg" type="number" min="0" max="360" step="1" value="60" />
+        </div>
+        
+      </div>
+
+      <div class="control-inline">
+        <div class="control">
+          <label for="baseThickness">Base Thickness</label>
+          <input id="baseThickness" type="number" min="0.2" step="0.1" value="1.2" />
+        </div>
+        <div class="control">
+          <label for="floatBaseGap">Base Gap (mm)</label>
+          <input id="floatBaseGap" type="number" min="0" step="0.1" value="1.0" />
+        </div>
+      </div>
+
+      <div class="control">
+        <label for="baseRadiusFactor">Base Radius Factor</label>
+        <input id="baseRadiusFactor" type="number" min="0.05" step="0.01" value="0.3" />
+      </div>
+
+      <div class="control-inline">
+        <div class="control">
+          <label for="drainAngle">Drain Angle (deg)</label>
+          <input id="drainAngle" type="number" min="1" max="89" step="1" value="35" />
+        </div>
+        <div class="control">
+          <label for="drainDiameter">Drain D (mm)</label>
+          <input id="drainDiameter" type="number" min="0.2" step="0.1" value="2.5" />
+        </div>
+      </div>
+
+      <div class="control-inline">
+        <div class="control">
+          <label for="postBaseFillet">Base Fillet (mm)</label>
+          <input id="postBaseFillet" type="number" step="0.1" value="1" />
+        </div>
+        <div class="control">
+          <label for="postTailFillet">Tail Fillet (mm)</label>
+          <input id="postTailFillet" type="number" step="0.1" value="2" />
+        </div>
+      </div>
+
+      <label class="check">
+        <input id="noBase" type="checkbox" />
+        <span>No base / support</span>
+      </label>
+
+      <label class="check">
+        <input id="invertBase" type="checkbox" />
+        <span>Invert base + tripod</span>
+      </label>
+
+      <label class="check">
+        <input id="noDrain" type="checkbox" />
+        <span>No drain hole</span>
+      </label>
+    </div>
+
+    <div class="btn-row">
+      <button id="saveBtn">Save JSON</button>
+      <button id="loadBtn">Load JSON</button>
+      <input id="loadInput" type="file" accept="application/json,.json" style="display:none" />
+    </div>
+
+    <div class="btn-row">
+      <button id="generateBtn">Generate CAD</button>
+      <button id="exportStepBtn" disabled>Export STEP</button>
+    </div>
+
+    <div class="btn-row">
+      <button id="exportStlBtn" disabled>Export STL</button>
+      <button id="fitBtn">Fit View</button>
+    </div>
+
+    <div class="status" id="status">Loading OpenCascade.js…</div>
+
+    <div class="metrics" id="metrics">
+      No model yet.
+    </div>
+  </div>
+
+  <div id="panelEdgeTrigger" aria-hidden="true"></div>
+
+  <div class="workspace">
+    <div class="pane">
+      <div class="pane-title">2D Profile</div>
+      <canvas id="profileCanvas" width="900" height="700"></canvas>
+    </div>
+    <div class="pane">
+      <div class="viewport-stage" id="viewportStage">Stage: Not built</div>
+      <div class="viewport-controls">
+        <label class="viewport-toggle">
+          <span>Cut Box</span>
+          <input id="clipBoxEdit" type="checkbox" />
+        </label>
+        <label class="viewport-toggle">
+          <span>Transparent</span>
+          <input id="transparentView" type="checkbox" checked />
+        </label>
+        <div class="viewport-toggle">
+          <select id="materialPreset">
+            <option value="plastic">◌ Plastic</option>
+            <option value="steel">⬡ Steel</option>
+            <option value="brass">✦ Brass</option>
+            <option value="graphite">◆ Graphite</option>
+            <option value="clay">◒ Clay</option>
+          </select>
+        </div>
+        <div class="viewport-toggle">
+          <select id="colorPreset">
+            <option value="default">◻ Default</option>
+            <option value="white">⚪ White</option>
+            <option value="gray">🔘 Gray</option>
+            <option value="black">⚫ Black</option>
+            <option value="red">🟥 Red</option>
+            <option value="green">🟩 Green</option>
+            <option value="blue">🟦 Blue</option>
+            <option value="yellow">🟨 Yellow</option>
+            <option value="orange">🟧 Orange</option>
+          </select>
+        </div>
+      </div>
+      <div id="viewport"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import ocFactory from "./vendor/opencascade/opencascade.loader.mjs";
+    import * as THREE from "./vendor/three/three.module.js";
+    import { OrbitControls } from "./vendor/three/examples/jsm/controls/OrbitControls.local.js";
+
+    const OCCT_BASE_URL = "./vendor/opencascade/";
+    const PROFILE_SAMPLES = 296;
+    const LOFT_SECTION_COUNT = 48;
+    const CIRCLE_SEGMENTS = 32;
+    const DEFAULT_LINEAR_DEFLECTION = 0.35;
+    const DEFAULT_ANGULAR_DEFLECTION = 0.5;
+    const AUTO_GENERATE_CAD = false;
+    const SOLID_VIEW_OPACITY = 0.45;
+    const STEP_PREVIEW_DELAY_MS = 120;
+    const BROWSER_STORAGE_KEY = "customfloatmaker.browser_state.v1";
+    const FIXED_PROFILE_THICKNESS = 100.0;
+    const LED_SLEEVE_END_CUT_DEG = 45.0;
+    const PREVIEW_MATERIALS = {
+      plastic: { color: 0xd8dde6, metalness: 0.05, roughness: 0.55, emissive: 0x000000, emissiveIntensity: 0.0 },
+      steel: { color: 0xc3ced9, metalness: 0.84, roughness: 0.28, emissive: 0x000000, emissiveIntensity: 0.0 },
+      brass: { color: 0xc4a051, metalness: 0.9, roughness: 0.34, emissive: 0x231608, emissiveIntensity: 0.03 },
+      graphite: { color: 0x56606a, metalness: 0.22, roughness: 0.86, emissive: 0x000000, emissiveIntensity: 0.0 },
+      clay: { color: 0xc88863, metalness: 0.02, roughness: 0.94, emissive: 0x1d1008, emissiveIntensity: 0.02 }
+    };
+    const PREVIEW_COLORS = {
+      default: null,
+      white: 0xf2f4f7,
+      gray: 0x9aa3ad,
+      black: 0x22272e,
+      red: 0xc74b4b,
+      green: 0x56a66a,
+      blue: 0x4d83d1,
+      yellow: 0xd0b347,
+      orange: 0xc98642
+    };
+    const SECTION_STAGE_MATERIAL = {
+      color: 0xaedfff,
+      metalness: 0.05,
+      roughness: 0.55,
+      emissive: 0x000000,
+      emissiveIntensity: 0.0
+    };
+
+    const profileCanvas = document.getElementById("profileCanvas");
+    const profileCtx = profileCanvas.getContext("2d");
+    const viewport = document.getElementById("viewport");
+
+    const ui = {
+      preset: document.getElementById("preset"),
+      length: document.getElementById("length"),
+      thickness: document.getElementById("thickness"),
+      p: document.getElementById("p"),
+      q: document.getElementById("q"),
+      alpha: document.getElementById("alpha"),
+      beta: document.getElementById("beta"),
+      buoyancy: document.getElementById("buoyancy"),
+      wallThickness: document.getElementById("wallThickness"),
+      bore: document.getElementById("bore"),
+      ledD: document.getElementById("ledD"),
+      ledLen: document.getElementById("ledLen"),
+      tripodAttachZ: document.getElementById("tripodAttachZ"),
+      tripodAttachZ2: document.getElementById("tripodAttachZ2"),
+      tripodOffsetDeg: document.getElementById("tripodOffsetDeg"),
+      legThickness: document.getElementById("legThickness"),
+      baseThickness: document.getElementById("baseThickness"),
+      floatBaseGap: document.getElementById("floatBaseGap"),
+      baseRadiusFactor: document.getElementById("baseRadiusFactor"),
+      drainAngle: document.getElementById("drainAngle"),
+      drainDiameter: document.getElementById("drainDiameter"),
+      postBaseFillet: document.getElementById("postBaseFillet"),
+      postTailFillet: document.getElementById("postTailFillet"),
+      noBase: document.getElementById("noBase"),
+      invertBase: document.getElementById("invertBase"),
+      noDrain: document.getElementById("noDrain"),
+      saveBtn: document.getElementById("saveBtn"),
+      loadBtn: document.getElementById("loadBtn"),
+      loadInput: document.getElementById("loadInput"),
+      generateBtn: document.getElementById("generateBtn"),
+      exportStepBtn: document.getElementById("exportStepBtn"),
+      exportStlBtn: document.getElementById("exportStlBtn"),
+      fitBtn: document.getElementById("fitBtn"),
+      clipBoxEdit: document.getElementById("clipBoxEdit"),
+      materialPreset: document.getElementById("materialPreset"),
+      colorPreset: document.getElementById("colorPreset"),
+      transparentView: document.getElementById("transparentView"),
+      viewportStage: document.getElementById("viewportStage"),
+      status: document.getElementById("status"),
+      metrics: document.getElementById("metrics"),
+      lengthVal: document.getElementById("lengthVal"),
+      thicknessVal: document.getElementById("thicknessVal"),
+      pVal: document.getElementById("pVal"),
+      qVal: document.getElementById("qVal"),
+      alphaVal: document.getElementById("alphaVal"),
+      betaVal: document.getElementById("betaVal")
+    };
+
+    const panel = document.querySelector(".panel");
+    const panelEdgeTrigger = document.getElementById("panelEdgeTrigger");
+    const PANEL_EDGE_TRIGGER_PX = 14;
+    const PANEL_HIDE_MARGIN_PX = 24;
+    const PANEL_HIDE_DELAY_MS = 140;
+    let panelHideTimer = null;
+
+    const state = {
+      oc: null,
+      cadWorker: null,
+      scene: null,
+      camera: null,
+      renderer: null,
+      controls: null,
+      currentShape: null,
+      currentMesh: null,
+      currentMetrics: null,
+      currentOverlay: null,
+      buildTimer: null,
+      ocReady: false,
+      workerReady: false,
+      buildVersion: 0,
+      workerRequestSeq: 0,
+      pendingStepExports: new Map(),
+      pendingStlExports: new Map(),
+      fitViewOnNextBuildStage: false,
+      renderQueue: Promise.resolve(),
+      sectionBoxGroup: null,
+      sectionCapGroup: null,
+      sectionCaps: [],
+      sectionBoxWire: null,
+      sectionHandles: [],
+      sectionBoxOriginal: null,
+      sectionBoxCurrent: null,
+      sectionPlanes: [],
+      dragHandle: null,
+      orbitDragging: false,
+      profileFilletInteraction: null,
+      profileFilletDrag: null,
+      profileHandleOffsets: {},
+      autosaveTimer: null,
+      pendingViewportState: null,
+      restoreViewportOnNextRender: false,
+      raycaster: new THREE.Raycaster(),
+      pointerNdc: new THREE.Vector2()
+    };
+
+    function setPanelCollapsed(collapsed) {
+      document.body.classList.toggle("panel-collapsed", !!collapsed);
+    }
+
+    function showPanel() {
+      if (panelHideTimer) {
+        clearTimeout(panelHideTimer);
+        panelHideTimer = null;
+      }
+      setPanelCollapsed(false);
+    }
+
+    function hidePanelSoon(delayMs = PANEL_HIDE_DELAY_MS) {
+      if (!panel) {
+        return;
+      }
+      if (panelHideTimer) {
+        clearTimeout(panelHideTimer);
+      }
+      panelHideTimer = setTimeout(() => {
+        panelHideTimer = null;
+        if (!panel.matches(":hover")) {
+          setPanelCollapsed(true);
+        }
+      }, Math.max(0, delayMs));
+    }
+
+    function updatePanelAutoHideFromPointer(event) {
+      if (!panel) {
+        return;
+      }
+      if (event.pointerType && event.pointerType !== "mouse") {
+        return;
+      }
+      if (event.buttons && event.buttons !== 0) {
+        return;
+      }
+      const pointerX = Number(event.clientX);
+      if (!Number.isFinite(pointerX)) {
+        return;
+      }
+      if (pointerX <= PANEL_EDGE_TRIGGER_PX) {
+        showPanel();
+        return;
+      }
+      if (document.body.classList.contains("panel-collapsed") || panel.matches(":hover")) {
+        return;
+      }
+      const panelRect = panel.getBoundingClientRect();
+      if (pointerX > panelRect.right + PANEL_HIDE_MARGIN_PX) {
+        hidePanelSoon();
+      }
+    }
+
+    function initPanelAutoHide() {
+      if (!panel) {
+        return;
+      }
+      setPanelCollapsed(true);
+      panel.addEventListener("pointerenter", showPanel);
+      panel.addEventListener("pointerleave", (event) => {
+        if (event.pointerType && event.pointerType !== "mouse") {
+          return;
+        }
+        hidePanelSoon();
+      });
+      panelEdgeTrigger?.addEventListener("pointerenter", showPanel);
+      panelEdgeTrigger?.addEventListener("pointermove", showPanel);
+      window.addEventListener("pointermove", updatePanelAutoHideFromPointer, { passive: true });
+    }
+
+    initPanelAutoHide();
+
+    (function placeStatusOverlayInProfilePane() {
+      const profilePane = profileCanvas.closest(".pane");
+      if (!profilePane || !ui.status) {
+        return;
+      }
+      if (ui.status.parentElement !== profilePane) {
+        profilePane.appendChild(ui.status);
+      }
+    })();
+
+    function setStatus(message, tone = "normal") {
+      const text = String(message ?? "");
+      ui.status.replaceChildren();
+
+      function appendStatusLink(label, onClick) {
+        const link = document.createElement("a");
+        link.href = "#";
+        link.className = "status-link";
+        link.textContent = label;
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          onClick();
+        });
+        ui.status.appendChild(link);
+      }
+
+      const generateActionText = "Click Generate CAD";
+      const exportActionText = "Click to export STL or STEP";
+      const generateActionIndex = text.indexOf(generateActionText);
+      const exportActionIndex = text.indexOf(exportActionText);
+
+      if (generateActionIndex >= 0) {
+        const before = text.slice(0, generateActionIndex);
+        const after = text.slice(generateActionIndex + generateActionText.length);
+        if (before) {
+          ui.status.appendChild(document.createTextNode(before));
+        }
+        appendStatusLink(generateActionText, () => {
+          if (!ui.generateBtn.disabled) {
+            ui.generateBtn.click();
+          }
+        });
+        if (after) {
+          ui.status.appendChild(document.createTextNode(after));
+        }
+      } else if (exportActionIndex >= 0) {
+        const before = text.slice(0, exportActionIndex);
+        const after = text.slice(exportActionIndex + exportActionText.length);
+        if (before) {
+          ui.status.appendChild(document.createTextNode(before));
+        }
+        ui.status.appendChild(document.createTextNode("Click to export "));
+        appendStatusLink("STL", () => {
+          if (!ui.exportStlBtn.disabled) {
+            ui.exportStlBtn.click();
+          }
+        });
+        ui.status.appendChild(document.createTextNode(" or "));
+        appendStatusLink("STEP", () => {
+          if (!ui.exportStepBtn.disabled) {
+            ui.exportStepBtn.click();
+          }
+        });
+        if (after) {
+          ui.status.appendChild(document.createTextNode(after));
+        }
+      } else {
+        ui.status.textContent = text;
+      }
+      ui.status.style.color =
+        tone === "ok" ? "var(--ok)"
+        : tone === "warn" ? "var(--warn)"
+        : tone === "err" ? "var(--err)"
+        : "var(--text)";
+    }
+
+    function waitForBrowserPaint() {
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          setTimeout(resolve, 0);
+        });
+      });
+    }
+
+    async function yieldToBrowser(message = null, tone = "normal") {
+      if (message) {
+        setStatus(message, tone);
+      }
+      await waitForBrowserPaint();
+    }
+
+    function markModelDirty(reason = "changed") {
+      if (state.buildTimer) {
+        clearTimeout(state.buildTimer);
+        state.buildTimer = null;
+      }
+      state.buildVersion += 1;
+      if (state.cadWorker && state.workerReady) {
+        state.cadWorker.postMessage({ type: "invalidate-build", buildVersion: state.buildVersion });
+      }
+      state.currentShape = null;
+      state.currentMetrics = null;
+      ui.generateBtn.disabled = false;
+      ui.exportStepBtn.disabled = true;
+      ui.exportStlBtn.disabled = true;
+      const message = reason === "initial"
+        ? "CAD worker ready. Click Generate CAD."
+        : "Parameters changed. Click Generate CAD.";
+      setStatus(message, "warn");
+    }
+
+    function callFirstAvailable(target, names, args = []) {
+      for (const name of names) {
+        if (typeof target[name] === "function") {
+          return target[name](...args);
+        }
+      }
+      throw new Error(`Missing method: ${names.join(" / ")}`);
+    }
+
+    function instantiateAvailable(openCascade, names, args = []) {
+      for (const name of names) {
+        const Ctor = openCascade[name];
+        if (typeof Ctor === "function") {
+          return new Ctor(...args);
+        }
+      }
+      throw new Error(`Missing constructor: ${names.join(" / ")}`);
+    }
+
+    function callFunctionVariants(fn, variants) {
+      const errors = [];
+      for (const args of variants) {
+        try {
+          return fn(...args);
+        } catch (err) {
+          errors.push(`${args.length} args: ${err.message}`);
+        }
+      }
+      throw new Error(`No working overload. Tried: ${errors.join(" | ")}`);
+    }
+
+    function instantiateAvailableVariants(openCascade, variants) {
+      const errors = [];
+      for (const variant of variants) {
+        const names = variant.names || [];
+        const args = variant.args || [];
+        for (const name of names) {
+          const Ctor = openCascade[name];
+          if (typeof Ctor !== "function") continue;
+          try {
+            return new Ctor(...args);
+          } catch (err) {
+            errors.push(`${name}: ${err.message}`);
+          }
+        }
+      }
+      throw new Error(`Missing working constructor variant. Tried: ${errors.join(" | ")}`);
+    }
+
+    function callFirstAvailableVariant(target, variants) {
+      const errors = [];
+      for (const variant of variants) {
+        const names = variant.names || [];
+        const args = variant.args || [];
+        for (const name of names) {
+          if (typeof target[name] !== "function") continue;
+          try {
+            return target[name](...args);
+          } catch (err) {
+            errors.push(`${name}: ${err.message}`);
+          }
+        }
+      }
+      throw new Error(`Missing working method variant. Tried: ${errors.join(" | ")}`);
+    }
+
+    async function initOpenCascadeJs() {
+      if (location.protocol === "file:") {
+        throw new Error(
+          "Open this page through http://localhost, not file://. Run serve_customfloatmaker.py and open the printed URL."
+        );
+      }
+      return ocFactory({
+        locateFile(file) {
+          return `${OCCT_BASE_URL}${file}`;
+        }
+      });
+    }
+
+    function buildGeometryFromPayload(payload) {
+      const geometry = new THREE.BufferGeometry();
+      const positions = payload.positions instanceof Float32Array ? payload.positions : new Float32Array(payload.positions || []);
+      const normals = payload.normals instanceof Float32Array ? payload.normals : new Float32Array(payload.normals || []);
+      const indices = payload.indices instanceof Uint32Array ? payload.indices : new Uint32Array(payload.indices || []);
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+      geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+      return geometry;
+    }
+
+    async function renderCurrentGeometryPayload(payload, metrics, options = {}) {
+      const hadMesh = Boolean(state.currentMesh);
+      const liveSectionBoxBounds = hadMesh ? serializeSectionBoxBounds(state.sectionBoxCurrent) : null;
+      const pendingViewport = state.pendingViewportState;
+      const isFinal = (options.final !== undefined ? options.final : true) && metrics?.buildStage !== "2D Section";
+      disposeCurrentMesh();
+      const geometry = buildGeometryFromPayload(payload);
+      const isSectionStage = metrics?.buildStage === "2D Section";
+      const material = createPreviewMeshMaterial(isSectionStage);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.rotation.x = -Math.PI / 2;
+      state.scene.add(mesh);
+      state.currentMesh = mesh;
+      if (isSectionStage) {
+        const edgeLines = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geometry),
+          new THREE.LineBasicMaterial({
+            color: 0x1b2b38,
+            depthTest: false,
+            transparent: false
+          })
+        );
+        edgeLines.rotation.copy(mesh.rotation);
+        edgeLines.renderOrder = 10;
+        state.scene.add(edgeLines);
+        state.currentOverlay = edgeLines;
+      }
+      state.currentMetrics = metrics;
+      applyMeshTransparency();
+      const fitCamera = options.fitCamera !== undefined
+        ? options.fitCamera
+        : (!hadMesh && !state.restoreViewportOnNextRender && isFinal);
+      if (fitCamera) {
+        fitCameraToCurrentMesh(isSectionStage ? "front" : "auto");
+      }
+      if (isSectionStage) {
+        disposeSectionBox();
+      } else {
+        buildSectionBoxForMesh(mesh);
+        if (liveSectionBoxBounds) {
+          applySavedSectionBoxBounds(liveSectionBoxBounds);
+        } else if (pendingViewport && isFinal) {
+          state.pendingViewportState = pendingViewport;
+          applyPendingViewportStateToCurrentMesh();
+          if (pendingViewport.clipBoxEdit !== undefined) {
+            setSectionEditMode(!!pendingViewport.clipBoxEdit);
+          }
+        }
+      }
+      state.restoreViewportOnNextRender = false;
+      ui.exportStepBtn.disabled = !isFinal;
+      ui.exportStlBtn.disabled = !isFinal;
+      renderMetrics(metrics);
+    }
+
+    async function handleCadWorkerMessage(event) {
+      const message = event.data || {};
+
+      if (message.type === "ready") {
+        state.workerReady = true;
+        state.ocReady = true;
+        setStatus("CAD worker ready. Click Generate CAD.", "ok");
+        scheduleBuild("initial");
+        return;
+      }
+
+      if (message.type === "progress") {
+        if (message.jobId == null || message.jobId === state.buildVersion) {
+          setStatus(message.message, message.tone || "normal");
+        }
+        return;
+      }
+
+      if (message.type === "stage") {
+        if (message.jobId !== state.buildVersion) {
+          return;
+        }
+        const fitCamera = state.fitViewOnNextBuildStage;
+        state.fitViewOnNextBuildStage = false;
+        state.renderQueue = state.renderQueue.then(() => renderCurrentGeometryPayload(message.geometry, message.metrics, {
+          final: false,
+          fitCamera
+        }));
+        await state.renderQueue;
+        return;
+      }
+
+      if (message.type === "done") {
+        if (message.jobId !== state.buildVersion) {
+          return;
+        }
+        state.renderQueue = state.renderQueue.then(() => renderCurrentGeometryPayload(message.geometry, message.metrics, {
+          final: true,
+          fitCamera: false
+        }));
+        await state.renderQueue;
+        ui.generateBtn.disabled = false;
+        setStatus(
+          `Model ready.\nClick to export STL or STEP. \nLength ${message.metrics.length.toFixed(2)} mm, diameter ${message.metrics.diameter.toFixed(2)} mm.`,
+          "ok"
+        );
+        return;
+      }
+
+      if (message.type === "step-export") {
+        const pending = state.pendingStepExports.get(message.requestId);
+        if (!pending) {
+          return;
+        }
+        state.pendingStepExports.delete(message.requestId);
+        pending.resolve(message.data instanceof Uint8Array ? message.data : new Uint8Array(message.data));
+        return;
+      }
+
+      if (message.type === "stl-export") {
+        const pending = state.pendingStlExports.get(message.requestId);
+        if (!pending) {
+          return;
+        }
+        state.pendingStlExports.delete(message.requestId);
+        pending.resolve(message.data instanceof Uint8Array ? message.data : new Uint8Array(message.data));
+        return;
+      }
+
+      if (message.type === "error") {
+        if (message.requestId != null) {
+          const pendingStep = state.pendingStepExports.get(message.requestId);
+          if (pendingStep) {
+            state.pendingStepExports.delete(message.requestId);
+            pendingStep.reject(new Error(message.message));
+          }
+          const pendingStl = state.pendingStlExports.get(message.requestId);
+          if (pendingStl) {
+            state.pendingStlExports.delete(message.requestId);
+            pendingStl.reject(new Error(message.message));
+          }
+        }
+        if (message.jobId == null || message.jobId === state.buildVersion) {
+          console.error(message.stack || message.message);
+          state.fitViewOnNextBuildStage = false;
+          ui.generateBtn.disabled = false;
+          setStatus(`CAD build failed: ${message.message}`, "err");
+        }
+      }
+    }
+
+    function initCadWorker() {
+      if (location.protocol === "file:") {
+        throw new Error(
+          "Open this page through http://localhost, not file://. Run serve_customfloatmaker.py and open the printed URL."
+        );
+      }
+      if (state.cadWorker) {
+        return;
+      }
+      const worker = new Worker(new URL("./customfloatmaker.worker.js", import.meta.url), { type: "module" });
+      worker.addEventListener("message", (event) => {
+        void handleCadWorkerMessage(event);
+      });
+      worker.addEventListener("error", (event) => {
+        console.error(event.error || event.message);
+        setStatus(`CAD worker failed: ${event.message || event.error?.message || "Unknown error"}`, "err");
+        ui.generateBtn.disabled = false;
+      });
+      state.cadWorker = worker;
+      worker.postMessage({ type: "init" });
+    }
+
+    function setupViewport() {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0d1218);
+
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 5000);
+      camera.position.set(120, 90, 140);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.localClippingEnabled = true;
+      viewport.appendChild(renderer.domElement);
+
+      const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+      scene.add(ambient);
+
+      const key = new THREE.DirectionalLight(0xffffff, 0.85);
+      key.position.set(1.5, 1.2, 1.0);
+      scene.add(key);
+
+      const fill = new THREE.DirectionalLight(0x9fd3ff, 0.35);
+      fill.position.set(-1.0, 0.5, -0.8);
+      scene.add(fill);
+
+      const grid = new THREE.GridHelper(240, 24, 0x2f3b4b, 0x202833);
+      scene.add(grid);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.target.set(0, 35, 0);
+      controls.addEventListener("change", () => {
+        scheduleBrowserStateSave();
+      });
+      controls.addEventListener("start", () => {
+        state.orbitDragging = true;
+        updateViewportCursor();
+      });
+      controls.addEventListener("end", () => {
+        state.orbitDragging = false;
+        updateViewportCursor();
+      });
+
+      state.scene = scene;
+      state.camera = camera;
+      state.renderer = renderer;
+      state.controls = controls;
+
+      renderer.domElement.addEventListener("pointerdown", onViewportPointerDown, { capture: true });
+      renderer.domElement.addEventListener("pointermove", onViewportPointerMove);
+      renderer.domElement.addEventListener("pointerup", onViewportPointerUp);
+      renderer.domElement.addEventListener("pointerleave", onViewportPointerUp);
+      renderer.domElement.addEventListener("dblclick", onViewportDoubleClick);
+      updateViewportCursor();
+
+      function resize() {
+        const width = Math.max(320, viewport.clientWidth);
+        const height = Math.max(320, viewport.clientHeight);
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      resize();
+      animate();
+      window.addEventListener("resize", resize);
+    }
+
+    function updatePointerNdc(event) {
+      const rect = state.renderer.domElement.getBoundingClientRect();
+      state.pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2.0 - 1.0;
+      state.pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2.0 + 1.0;
+    }
+
+    function localAxisVector(axis, sign = 1.0) {
+      if (axis === "x") return new THREE.Vector3(sign, 0, 0);
+      if (axis === "y") return new THREE.Vector3(0, sign, 0);
+      return new THREE.Vector3(0, 0, sign);
+    }
+
+    function sectionBoxBoundsCopy(source) {
+      return {
+        min: source.min.clone(),
+        max: source.max.clone()
+      };
+    }
+
+    function setSectionEditMode(enabled) {
+      if (state.dragHandle && !enabled) {
+        state.renderer?.domElement.releasePointerCapture?.(state.dragHandle.pointerId);
+        state.dragHandle = null;
+      }
+      if (state.controls) {
+        state.controls.enabled = !state.dragHandle;
+      }
+      updateViewportCursor();
+      if (state.sectionBoxWire) {
+        state.sectionBoxWire.visible = enabled;
+      }
+      for (const handle of state.sectionHandles) {
+        handle.visible = enabled;
+      }
+    }
+
+    function getSectionHandleCursor(handleLike) {
+      const axis = handleLike?.userData?.axis || handleLike?.axis || null;
+      if (axis === "x") return "ew-resize";
+      if (axis === "y") return "ns-resize";
+      if (axis === "z") return "nwse-resize";
+      return "default";
+    }
+
+    function getSectionHandleAtPointer(event) {
+      if (!ui.clipBoxEdit?.checked || !state.currentMesh || !state.sectionHandles.length || !state.camera) {
+        return null;
+      }
+      updatePointerNdc(event);
+      state.raycaster.setFromCamera(state.pointerNdc, state.camera);
+      const hits = state.raycaster.intersectObjects(state.sectionHandles, false);
+      return hits.length ? hits[0].object : null;
+    }
+
+    function setSectionHandleHover(hoveredHandle = null) {
+      for (const handle of state.sectionHandles) {
+        if (!handle?.material) continue;
+        const isHovered = handle === hoveredHandle;
+        handle.material.color.setHex(isHovered ? 0xff7a1a : 0xe5ba63);
+        handle.material.opacity = isHovered ? 0.95 : 0.45;
+        handle.material.needsUpdate = true;
+      }
+    }
+
+    function updateViewportCursor(event = null) {
+      if (!state.renderer) {
+        return;
+      }
+
+      if (state.dragHandle) {
+        const draggedMesh = state.sectionHandles.find(
+          (handle) =>
+            handle.userData?.axis === state.dragHandle.axis &&
+            handle.userData?.sign === state.dragHandle.sign
+        ) || null;
+
+        setSectionHandleHover(draggedMesh);
+        state.renderer.domElement.style.cursor = getSectionHandleCursor(state.dragHandle);
+        return;
+      }
+
+      if (ui.clipBoxEdit?.checked) {
+        const hoveredHandle = event ? getSectionHandleAtPointer(event) : null;
+        setSectionHandleHover(hoveredHandle);
+        state.renderer.domElement.style.cursor = hoveredHandle
+          ? getSectionHandleCursor(hoveredHandle)
+          : (state.orbitDragging ? "grabbing" : "grab");
+        return;
+      }
+
+      setSectionHandleHover(null);
+      state.renderer.domElement.style.cursor = state.orbitDragging ? "grabbing" : "grab";
+    }
+
+    function getPreviewMaterialKey() {
+      const key = ui.materialPreset?.value || "plastic";
+      return PREVIEW_MATERIALS[key] ? key : "plastic";
+    }
+
+    function getPreviewColorKey() {
+      const key = ui.colorPreset?.value || "default";
+      return Object.prototype.hasOwnProperty.call(PREVIEW_COLORS, key) ? key : "default";
+    }
+
+    function getPreviewMaterialConfig(isSectionStage = false) {
+      return isSectionStage ? SECTION_STAGE_MATERIAL : PREVIEW_MATERIALS[getPreviewMaterialKey()];
+    }
+
+    function applyPreviewMaterialConfig(material, isSectionStage = false) {
+      if (!material) {
+        return;
+      }
+      const config = getPreviewMaterialConfig(isSectionStage);
+      const overrideColor = !isSectionStage ? PREVIEW_COLORS[getPreviewColorKey()] : null;
+      material.color.setHex(overrideColor ?? config.color);
+      material.metalness = config.metalness;
+      material.roughness = config.roughness;
+      if (material.emissive) {
+        material.emissive.setHex(config.emissive || 0x000000);
+        material.emissiveIntensity = config.emissiveIntensity || 0.0;
+      }
+      material.side = THREE.DoubleSide;
+      material.needsUpdate = true;
+    }
+
+    function createPreviewMeshMaterial(isSectionStage = false) {
+      const material = new THREE.MeshStandardMaterial({
+        side: THREE.DoubleSide
+      });
+      applyPreviewMaterialConfig(material, isSectionStage);
+      material.transparent = !isSectionStage;
+      material.opacity = isSectionStage ? 0.95 : SOLID_VIEW_OPACITY;
+      return material;
+    }
+
+    function applyCurrentPreviewMaterial() {
+      const isSectionStage = state.currentMetrics?.buildStage === "2D Section";
+      if (state.currentMesh?.material) {
+        applyPreviewMaterialConfig(state.currentMesh.material, isSectionStage);
+      }
+      for (const cap of state.sectionCaps) {
+        if (!cap.capMesh?.material) continue;
+        applyPreviewMaterialConfig(cap.capMesh.material, false);
+      }
+      applyMeshTransparency();
+    }
+
+    function applyMeshTransparency() {
+      const transparent = !!ui.transparentView?.checked;
+      if (state.currentMesh?.material) {
+        state.currentMesh.material.transparent = transparent;
+        state.currentMesh.material.opacity = transparent ? SOLID_VIEW_OPACITY : 1.0;
+        state.currentMesh.material.depthWrite = !transparent;
+        state.currentMesh.material.needsUpdate = true;
+      }
+      for (const cap of state.sectionCaps) {
+        if (!cap.capMesh?.material) continue;
+        cap.capMesh.material.transparent = transparent;
+        cap.capMesh.material.opacity = transparent ? SOLID_VIEW_OPACITY : 1.0;
+        cap.capMesh.material.depthWrite = !transparent;
+        cap.capMesh.material.needsUpdate = true;
+      }
+    }
+
+    function buildLocalSectionPlaneSpecs(box) {
+      return [
+        {
+          axis: "x",
+          sign: -1,
+          localPlane: new THREE.Plane(new THREE.Vector3(1, 0, 0), -box.min.x),
+          localNormal: new THREE.Vector3(1, 0, 0),
+          localPoint: new THREE.Vector3(box.min.x, 0, 0)
+        },
+        {
+          axis: "x",
+          sign: 1,
+          localPlane: new THREE.Plane(new THREE.Vector3(-1, 0, 0), box.max.x),
+          localNormal: new THREE.Vector3(-1, 0, 0),
+          localPoint: new THREE.Vector3(box.max.x, 0, 0)
+        },
+        {
+          axis: "y",
+          sign: -1,
+          localPlane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -box.min.y),
+          localNormal: new THREE.Vector3(0, 1, 0),
+          localPoint: new THREE.Vector3(0, box.min.y, 0)
+        },
+        {
+          axis: "y",
+          sign: 1,
+          localPlane: new THREE.Plane(new THREE.Vector3(0, -1, 0), box.max.y),
+          localNormal: new THREE.Vector3(0, -1, 0),
+          localPoint: new THREE.Vector3(0, box.max.y, 0)
+        },
+        {
+          axis: "z",
+          sign: -1,
+          localPlane: new THREE.Plane(new THREE.Vector3(0, 0, 1), -box.min.z),
+          localNormal: new THREE.Vector3(0, 0, 1),
+          localPoint: new THREE.Vector3(0, 0, box.min.z)
+        },
+        {
+          axis: "z",
+          sign: 1,
+          localPlane: new THREE.Plane(new THREE.Vector3(0, 0, -1), box.max.z),
+          localNormal: new THREE.Vector3(0, 0, -1),
+          localPoint: new THREE.Vector3(0, 0, box.max.z)
+        }
+      ];
+    }
+
+    function isSectionFaceActive(axis, sign) {
+      if (!state.sectionBoxCurrent || !state.sectionBoxOriginal) {
+        return false;
+      }
+      const tolerance = 1.0e-3;
+      if (sign > 0) {
+        return state.sectionBoxCurrent.max[axis] < state.sectionBoxOriginal.max[axis] - tolerance;
+      }
+      return state.sectionBoxCurrent.min[axis] > state.sectionBoxOriginal.min[axis] + tolerance;
+    }
+
+    function createSectionCapStencilGroup(geometry, renderOrder) {
+      const group = new THREE.Group();
+      const baseMaterial = new THREE.MeshBasicMaterial({
+        depthWrite: false,
+        depthTest: false,
+        colorWrite: false,
+        stencilWrite: true,
+        stencilFunc: THREE.AlwaysStencilFunc
+      });
+
+      const backMaterial = baseMaterial.clone();
+      backMaterial.side = THREE.BackSide;
+      backMaterial.clippingPlanes = [];
+      backMaterial.stencilFail = THREE.IncrementWrapStencilOp;
+      backMaterial.stencilZFail = THREE.IncrementWrapStencilOp;
+      backMaterial.stencilZPass = THREE.IncrementWrapStencilOp;
+      const backMesh = new THREE.Mesh(geometry, backMaterial);
+      backMesh.renderOrder = renderOrder;
+      group.add(backMesh);
+
+      const frontMaterial = baseMaterial.clone();
+      frontMaterial.side = THREE.FrontSide;
+      frontMaterial.clippingPlanes = [];
+      frontMaterial.stencilFail = THREE.DecrementWrapStencilOp;
+      frontMaterial.stencilZFail = THREE.DecrementWrapStencilOp;
+      frontMaterial.stencilZPass = THREE.DecrementWrapStencilOp;
+      const frontMesh = new THREE.Mesh(geometry, frontMaterial);
+      frontMesh.renderOrder = renderOrder;
+      group.add(frontMesh);
+
+      return {
+        group,
+        backMesh,
+        frontMesh
+      };
+    }
+
+    function buildSectionCapsForMesh(mesh) {
+      if (!state.scene || !state.sectionBoxOriginal) {
+        return;
+      }
+
+      const original = state.sectionBoxOriginal;
+      const size = new THREE.Vector3().subVectors(original.max, original.min);
+      const planeSize = Math.max(size.x, size.y, size.z, 1.0) * 2.5;
+      const planeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
+      const specs = buildLocalSectionPlaneSpecs(state.sectionBoxCurrent);
+
+      const group = new THREE.Group();
+      group.name = "sectionCaps";
+      state.sectionCaps = specs.map((spec, index) => {
+        const stencil = createSectionCapStencilGroup(mesh.geometry, 20 + index * 2);
+        group.add(stencil.group);
+
+        const capMaterial = createPreviewMeshMaterial(false);
+        capMaterial.clippingPlanes = [];
+        capMaterial.transparent = !!ui.transparentView?.checked;
+        capMaterial.opacity = !!ui.transparentView?.checked ? SOLID_VIEW_OPACITY : 1.0;
+        capMaterial.stencilWrite = true;
+        capMaterial.stencilRef = 0;
+        capMaterial.stencilFunc = THREE.NotEqualStencilFunc;
+        capMaterial.stencilFail = THREE.ReplaceStencilOp;
+        capMaterial.stencilZFail = THREE.ReplaceStencilOp;
+        capMaterial.stencilZPass = THREE.ReplaceStencilOp;
+        const capMesh = new THREE.Mesh(planeGeometry, capMaterial);
+        capMesh.renderOrder = 20 + index * 2 + 0.1;
+        capMesh.onAfterRender = (renderer) => renderer.clearStencil();
+        group.add(capMesh);
+
+        return {
+          axis: spec.axis,
+          sign: spec.sign,
+          localNormal: spec.localNormal.clone(),
+          localPoint: spec.localPoint.clone(),
+          stencilGroup: stencil.group,
+          backMesh: stencil.backMesh,
+          frontMesh: stencil.frontMesh,
+          capMesh
+        };
+      });
+
+      state.scene.add(group);
+      state.sectionCapGroup = group;
+    }
+
+    function updateSectionCaps(localPlaneSpecs, worldPlanes) {
+      if (!state.currentMesh || !state.sectionCaps.length) {
+        return;
+      }
+
+      state.currentMesh.updateMatrixWorld(true);
+      const worldPosition = state.currentMesh.getWorldPosition(new THREE.Vector3());
+      const worldQuaternion = state.currentMesh.getWorldQuaternion(new THREE.Quaternion());
+      const worldScale = state.currentMesh.getWorldScale(new THREE.Vector3());
+
+      for (let index = 0; index < state.sectionCaps.length; index += 1) {
+        const cap = state.sectionCaps[index];
+        const spec = localPlaneSpecs[index];
+        const active = isSectionFaceActive(cap.axis, cap.sign);
+        const otherPlanes = worldPlanes.filter((_, planeIndex) => planeIndex !== index);
+
+        cap.stencilGroup.visible = active;
+        cap.stencilGroup.position.copy(worldPosition);
+        cap.stencilGroup.quaternion.copy(worldQuaternion);
+        cap.stencilGroup.scale.copy(worldScale);
+        cap.backMesh.material.clippingPlanes = [worldPlanes[index]];
+        cap.frontMesh.material.clippingPlanes = [worldPlanes[index]];
+        cap.backMesh.material.needsUpdate = true;
+        cap.frontMesh.material.needsUpdate = true;
+
+        const worldPoint = spec.localPoint.clone().applyMatrix4(state.currentMesh.matrixWorld);
+        const worldNormal = spec.localNormal.clone().transformDirection(state.currentMesh.matrixWorld).normalize();
+        cap.capMesh.visible = active;
+        cap.capMesh.position.copy(worldPoint);
+        cap.capMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), worldNormal);
+        cap.capMesh.material.clippingPlanes = otherPlanes;
+        cap.capMesh.material.needsUpdate = true;
+      }
+    }
+
+    function serializeSectionBoxBounds(bounds) {
+      if (!bounds?.min || !bounds?.max) {
+        return null;
+      }
+      return {
+        min: bounds.min.toArray(),
+        max: bounds.max.toArray()
+      };
+    }
+
+    function cloneSerializedSectionBoxBounds(serialized) {
+      if (!serialized || !Array.isArray(serialized.min) || !Array.isArray(serialized.max)) {
+        return null;
+      }
+      return {
+        min: serialized.min.map(Number),
+        max: serialized.max.map(Number)
+      };
+    }
+
+    function rememberCurrentSectionBoxBounds() {
+      const serialized = serializeSectionBoxBounds(state.sectionBoxCurrent);
+      if (!serialized) {
+        return;
+      }
+      state.pendingViewportState = {
+        ...(state.pendingViewportState || {}),
+        materialPreset: getPreviewMaterialKey(),
+        colorPreset: getPreviewColorKey(),
+        transparentView: !!ui.transparentView?.checked,
+        clipBoxEdit: !!ui.clipBoxEdit?.checked,
+        sectionBoxCurrent: serialized
+      };
+    }
+
+    function applySavedSectionBoxBounds(serialized) {
+      if (!serialized || !state.sectionBoxCurrent || !state.sectionBoxOriginal) {
+        return;
+      }
+      const minIn = Array.isArray(serialized.min) ? serialized.min.map(Number) : null;
+      const maxIn = Array.isArray(serialized.max) ? serialized.max.map(Number) : null;
+      if (!minIn || !maxIn || minIn.length !== 3 || maxIn.length !== 3) {
+        return;
+      }
+
+      const current = state.sectionBoxCurrent;
+      const original = state.sectionBoxOriginal;
+      const fullSize = Math.max(
+        original.max.x - original.min.x,
+        original.max.y - original.min.y,
+        original.max.z - original.min.z,
+        1.0
+      );
+      const minGap = Math.max(fullSize * 0.02, 0.5);
+      current.min.x = THREE.MathUtils.clamp(minIn[0], original.min.x, original.max.x - minGap);
+      current.max.x = THREE.MathUtils.clamp(maxIn[0], current.min.x + minGap, original.max.x);
+      current.min.y = THREE.MathUtils.clamp(minIn[1], original.min.y, original.max.y - minGap);
+      current.max.y = THREE.MathUtils.clamp(maxIn[1], current.min.y + minGap, original.max.y);
+      current.min.z = THREE.MathUtils.clamp(minIn[2], original.min.z, original.max.z - minGap);
+      current.max.z = THREE.MathUtils.clamp(maxIn[2], current.min.z + minGap, original.max.z);
+      updateSectionBoxVisuals();
+      updateSectionClippingPlanes();
+    }
+
+    function applyPendingViewportStateToCurrentMesh() {
+      if (!state.pendingViewportState) {
+        return;
+      }
+      if (state.pendingViewportState.sectionBoxCurrent) {
+        applySavedSectionBoxBounds(state.pendingViewportState.sectionBoxCurrent);
+      }
+      state.pendingViewportState = null;
+    }
+
+    function applySavedCameraState(cameraState) {
+      if (!cameraState || !state.camera || !state.controls) {
+        return;
+      }
+      const position = Array.isArray(cameraState.position) ? cameraState.position.map(Number) : null;
+      const target = Array.isArray(cameraState.target) ? cameraState.target.map(Number) : null;
+      if (position && position.length === 3) {
+        state.camera.position.fromArray(position);
+      }
+      if (target && target.length === 3) {
+        state.controls.target.fromArray(target);
+      }
+      state.controls.update();
+    }
+
+    function disposeSectionBox() {
+      state.dragHandle = null;
+      state.sectionBoxOriginal = null;
+      state.sectionBoxCurrent = null;
+      state.sectionPlanes = [];
+      if (state.currentMesh && state.currentMesh.material) {
+        state.currentMesh.material.clippingPlanes = [];
+        state.currentMesh.material.needsUpdate = true;
+      }
+      if (!state.sectionBoxGroup) {
+        state.sectionHandles = [];
+        state.sectionBoxWire = null;
+      } else {
+        state.sectionBoxGroup.traverse((obj) => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach((mat) => mat.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        });
+        if (state.sectionBoxGroup.parent) {
+          state.sectionBoxGroup.parent.remove(state.sectionBoxGroup);
+        }
+      }
+
+      if (state.sectionCapGroup) {
+        state.sectionCapGroup.traverse((obj) => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach((mat) => mat.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        });
+        if (state.sectionCapGroup.parent) {
+          state.sectionCapGroup.parent.remove(state.sectionCapGroup);
+        }
+      }
+
+      state.sectionBoxGroup = null;
+      state.sectionCapGroup = null;
+      state.sectionCaps = [];
+      state.sectionBoxWire = null;
+      state.sectionHandles = [];
+    }
+
+    function updateSectionClippingPlanes() {
+      if (!state.currentMesh || !state.currentMesh.material || !state.sectionBoxCurrent) {
+        return;
+      }
+      state.currentMesh.updateMatrixWorld(true);
+      const box = state.sectionBoxCurrent;
+      const worldMatrix = state.currentMesh.matrixWorld;
+      const worldNormalMatrix = new THREE.Matrix3().getNormalMatrix(worldMatrix);
+      const localPlaneSpecs = buildLocalSectionPlaneSpecs(box);
+      state.sectionPlanes = localPlaneSpecs.map((spec) => spec.localPlane.clone().applyMatrix4(worldMatrix, worldNormalMatrix));
+      state.currentMesh.material.clippingPlanes = state.sectionPlanes;
+      state.currentMesh.material.needsUpdate = true;
+      updateSectionCaps(localPlaneSpecs, state.sectionPlanes);
+    }
+
+    function updateSectionBoxVisuals() {
+      if (!state.sectionBoxWire || !state.sectionBoxCurrent) {
+        return;
+      }
+      const min = state.sectionBoxCurrent.min;
+      const max = state.sectionBoxCurrent.max;
+      const size = new THREE.Vector3(
+        Math.max(max.x - min.x, 0.05),
+        Math.max(max.y - min.y, 0.05),
+        Math.max(max.z - min.z, 0.05)
+      );
+      const center = new THREE.Vector3(
+        0.5 * (min.x + max.x),
+        0.5 * (min.y + max.y),
+        0.5 * (min.z + max.z)
+      );
+      state.sectionBoxWire.position.copy(center);
+      state.sectionBoxWire.scale.copy(size);
+      state.sectionBoxWire.visible = !!ui.clipBoxEdit?.checked;
+
+      const handleSize = Math.max(Math.max(size.x, size.y, size.z) * 0.045, 1.0);
+      for (const handle of state.sectionHandles) {
+        const pos = center.clone();
+        pos[handle.userData.axis] = handle.userData.sign > 0 ? max[handle.userData.axis] : min[handle.userData.axis];
+        handle.position.copy(pos);
+        handle.scale.setScalar(handleSize);
+        handle.visible = !!ui.clipBoxEdit?.checked;
+      }
+    }
+
+    function buildSectionBoxForMesh(mesh) {
+      disposeSectionBox();
+      mesh.geometry.computeBoundingBox();
+      var bbox = mesh.geometry.boundingBox.clone();
+      bbox.min.z = 0;
+      state.sectionBoxOriginal = {
+        min: bbox.min.clone(),
+        max: bbox.max.clone()
+      };
+      state.sectionBoxCurrent = sectionBoxBoundsCopy(state.sectionBoxOriginal);
+
+      const group = new THREE.Group();
+      group.name = "sectionBox";
+
+      const wireGroup = new THREE.Group();
+      const visibleWire = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+        new THREE.LineBasicMaterial({
+          color: 0x7ec6ff,
+          transparent: true,
+          opacity: 0.9,
+          depthTest: true,
+          depthWrite: false
+        })
+      );
+      visibleWire.renderOrder = 2;
+      wireGroup.add(visibleWire);
+
+      const hiddenWire = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+        new THREE.LineDashedMaterial({
+          color: 0x7ec6ff,
+          transparent: true,
+          opacity: 0.26,
+          dashSize: 0.08,
+          gapSize: 0.12,
+          depthTest: true,
+          depthWrite: false,
+          depthFunc: THREE.GreaterDepth
+        })
+      );
+      hiddenWire.computeLineDistances();
+      hiddenWire.renderOrder = 1;
+      wireGroup.add(hiddenWire);
+
+      wireGroup.visible = !!ui.clipBoxEdit?.checked;
+      group.add(wireGroup);
+
+      const handleGeometry = new THREE.ConeGeometry(0.5, 1.2, 20);
+      const handleMaterial = new THREE.MeshBasicMaterial({
+        color: 0xe5ba63,
+        transparent: true,
+        opacity: 0.45,
+        depthTest: false
+      });
+
+      const faces = [
+        { axis: "x", sign: -1 },
+        { axis: "x", sign: 1 },
+        { axis: "y", sign: -1 },
+        { axis: "y", sign: 1 },
+        { axis: "z", sign: -1 },
+        { axis: "z", sign: 1 }
+      ];
+
+      state.sectionHandles = faces.map((face) => {
+        const handle = new THREE.Mesh(handleGeometry.clone(), handleMaterial.clone());
+        handle.userData = { axis: face.axis, sign: face.sign };
+        handle.renderOrder = 3;
+        if (face.axis === "x") {
+          handle.rotation.z = face.sign > 0 ? -Math.PI * 0.5 : Math.PI * 0.5;
+        } else if (face.axis === "y") {
+          handle.rotation.x = face.sign > 0 ? 0.0 : Math.PI;
+        } else {
+          handle.rotation.x = face.sign > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+        }
+        group.add(handle);
+        return handle;
+      });
+
+      mesh.add(group);
+      state.sectionBoxGroup = group;
+      state.sectionBoxWire = wireGroup;
+      buildSectionCapsForMesh(mesh);
+      updateSectionBoxVisuals();
+      updateSectionClippingPlanes();
+      // Restore cut box coordinates if pending
+      applyPendingViewportStateToCurrentMesh();
+      setSectionEditMode(!!ui.clipBoxEdit?.checked);
+    }
+
+    function resetSectionFaceFromHandle(handle) {
+      if (!handle || !state.sectionBoxOriginal || !state.sectionBoxCurrent) {
+        return;
+      }
+      const axis = handle.userData.axis;
+      const sign = handle.userData.sign;
+      if (sign > 0) {
+        state.sectionBoxCurrent.max[axis] = state.sectionBoxOriginal.max[axis];
+      } else {
+        state.sectionBoxCurrent.min[axis] = state.sectionBoxOriginal.min[axis];
+      }
+      updateSectionBoxVisuals();
+      updateSectionClippingPlanes();
+      rememberCurrentSectionBoxBounds();
+      scheduleBrowserStateSave();
+    }
+
+    function onViewportPointerDown(event) {
+      if (!ui.clipBoxEdit?.checked || !state.currentMesh || !state.sectionHandles.length) {
+        return;
+      }
+      const handle = getSectionHandleAtPointer(event);
+      if (!handle) {
+        updateViewportCursor(event);
+        return;
+      }
+      const axis = handle.userData.axis;
+      const sign = handle.userData.sign;
+      const handleWorld = new THREE.Vector3();
+      handle.getWorldPosition(handleWorld);
+      const worldQuaternion = new THREE.Quaternion();
+      state.currentMesh.getWorldQuaternion(worldQuaternion);
+      const axisWorld = localAxisVector(axis, 1.0).applyQuaternion(worldQuaternion).normalize();
+      const planeNormal = new THREE.Vector3();
+      state.camera.getWorldDirection(planeNormal);
+      const dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, handleWorld);
+      const hitPoint = new THREE.Vector3();
+      state.raycaster.ray.intersectPlane(dragPlane, hitPoint);
+      state.dragHandle = {
+        pointerId: event.pointerId,
+        axis,
+        sign,
+        axisWorld,
+        plane: dragPlane,
+        startPoint: hitPoint.clone(),
+        startValue: sign > 0 ? state.sectionBoxCurrent.max[axis] : state.sectionBoxCurrent.min[axis]
+      };
+      if (state.controls) {
+        state.controls.enabled = false;
+      }
+      state.orbitDragging = false;
+      state.renderer.domElement.setPointerCapture?.(event.pointerId);
+      updateViewportCursor(event);
+      event.stopImmediatePropagation();
+      event.preventDefault();
+    }
+
+    function onViewportPointerMove(event) {
+      if (!state.dragHandle || event.pointerId !== state.dragHandle.pointerId) {
+        updateViewportCursor(event);
+        return;
+      }
+      updatePointerNdc(event);
+      state.raycaster.setFromCamera(state.pointerNdc, state.camera);
+      const hitPoint = new THREE.Vector3();
+      if (!state.raycaster.ray.intersectPlane(state.dragHandle.plane, hitPoint)) {
+        return;
+      }
+      const delta = hitPoint.clone().sub(state.dragHandle.startPoint).dot(state.dragHandle.axisWorld);
+      const axis = state.dragHandle.axis;
+      const original = state.sectionBoxOriginal;
+      const current = state.sectionBoxCurrent;
+      const fullSize = Math.max(
+        original.max.x - original.min.x,
+        original.max.y - original.min.y,
+        original.max.z - original.min.z,
+        1.0
+      );
+      const minGap = Math.max(fullSize * 0.02, 0.5);
+      if (state.dragHandle.sign > 0) {
+        const next = THREE.MathUtils.clamp(
+          state.dragHandle.startValue + delta,
+          current.min[axis] + minGap,
+          original.max[axis]
+        );
+        current.max[axis] = next;
+      } else {
+        const next = THREE.MathUtils.clamp(
+          state.dragHandle.startValue + delta,
+          original.min[axis],
+          current.max[axis] - minGap
+        );
+        current.min[axis] = next;
+      }
+      updateSectionBoxVisuals();
+      updateSectionClippingPlanes();
+      rememberCurrentSectionBoxBounds();
+      scheduleBrowserStateSave();
+      updateViewportCursor(event);
+      event.preventDefault();
+    }
+
+    function onViewportPointerUp(event) {
+      if (!state.dragHandle) {
+        updateViewportCursor(event);
+        return;
+      }
+      if (event.pointerId !== undefined && state.dragHandle.pointerId !== undefined && event.pointerId !== state.dragHandle.pointerId) {
+        return;
+      }
+      state.renderer.domElement.releasePointerCapture?.(state.dragHandle.pointerId);
+      state.dragHandle = null;
+      if (state.controls) {
+        state.controls.enabled = true;
+      }
+      updateViewportCursor(event);
+    }
+
+    function onViewportDoubleClick(event) {
+      if (!state.currentMesh) {
+        return;
+      }
+      updatePointerNdc(event);
+      state.raycaster.setFromCamera(state.pointerNdc, state.camera);
+
+      if (ui.clipBoxEdit?.checked && state.sectionHandles.length) {
+        const handleHits = state.raycaster.intersectObjects(state.sectionHandles, false);
+        if (handleHits.length) {
+          resetSectionFaceFromHandle(handleHits[0].object);
+          event.preventDefault();
+          return;
+        }
+      }
+
+      const modelTargets = [state.currentMesh];
+      if (state.currentOverlay) {
+        modelTargets.push(state.currentOverlay);
+      }
+      for (const cap of state.sectionCaps) {
+        if (cap.capMesh?.visible) {
+          modelTargets.push(cap.capMesh);
+        }
+      }
+
+      const modelHits = state.raycaster.intersectObjects(modelTargets, true);
+      if (!modelHits.length) {
+        return;
+      }
+
+      ui.clipBoxEdit.checked = !ui.clipBoxEdit.checked;
+      setSectionEditMode(ui.clipBoxEdit.checked);
+      scheduleBrowserStateSave();
+      event.preventDefault();
+    }
+
+    function getParams() {
+      return {
+        preset: ui.preset.value,
+        profileLength: Number(ui.length.value),
+        profileThickness: Number(ui.thickness.value) || FIXED_PROFILE_THICKNESS,
+        p: Number(ui.p.value),
+        q: Number(ui.q.value),
+        alpha: Number(ui.alpha.value),
+        beta: Number(ui.beta.value),
+        buoyancyG: Number(ui.buoyancy.value),
+        wallThickness: Number(ui.wallThickness.value),
+        bore: Number(ui.bore.value),
+        tripodAttachZ: Number(ui.tripodAttachZ.value),
+        tripodAttachZ2: Number(ui.tripodAttachZ2.value),
+        tripodOffsetDeg: Number(ui.tripodOffsetDeg.value),
+        legThickness: Number(ui.legThickness.value),
+        baseThickness: Number(ui.baseThickness.value),
+        floatBaseGap: Number(ui.floatBaseGap.value),
+        baseRadiusFactor: Number(ui.baseRadiusFactor.value),
+        ledD: Number(ui.ledD.value),
+        ledLen: Number(ui.ledLen.value),
+        drainAngleDeg: Number(ui.drainAngle.value),
+        drainHoleDiameter: Number(ui.drainDiameter.value),
+        postBaseFilletRadius: Math.abs(Number(ui.postBaseFillet.value)),
+        postTailFilletRadius: Math.abs(Number(ui.postTailFillet.value)),
+        noBase: ui.noBase.checked,
+        invertBase: ui.invertBase.checked,
+        noDrain: ui.noDrain.checked,
+        ledCenterOffset: Number(ui.wallThickness.value) + Number(ui.ledD.value) / 2.0 + Number(ui.bore.value) / 2.0
+      };
+    }
+
+    function setParams(params) {
+      if (params.preset !== undefined) ui.preset.value = params.preset;
+      if (params.profileLength !== undefined) ui.length.value = params.profileLength;
+      if (params.profileThickness !== undefined) {
+        ui.thickness.value = params.profileThickness;
+      } else if (!ui.thickness.value) {
+        ui.thickness.value = FIXED_PROFILE_THICKNESS;
+      }
+      if (params.p !== undefined) ui.p.value = params.p;
+      if (params.q !== undefined) ui.q.value = params.q;
+      if (params.alpha !== undefined) ui.alpha.value = params.alpha;
+      if (params.beta !== undefined) ui.beta.value = params.beta;
+      if (params.buoyancyG !== undefined) {
+        setInputNumericValue(ui.buoyancy, Number(params.buoyancyG));
+      }
+      if (params.wallThickness !== undefined) ui.wallThickness.value = params.wallThickness;
+      if (params.bore !== undefined) ui.bore.value = params.bore;
+      if (params.tripodAttachZ !== undefined) ui.tripodAttachZ.value = params.tripodAttachZ;
+      if (params.tripodAttachZ2 !== undefined) ui.tripodAttachZ2.value = params.tripodAttachZ2;
+      if (params.tripodOffsetDeg !== undefined) ui.tripodOffsetDeg.value = params.tripodOffsetDeg;
+      if (params.legThickness !== undefined) ui.legThickness.value = params.legThickness;
+      if (params.baseThickness !== undefined) ui.baseThickness.value = params.baseThickness;
+      if (params.floatBaseGap !== undefined) ui.floatBaseGap.value = params.floatBaseGap;
+      if (params.baseRadiusFactor !== undefined) ui.baseRadiusFactor.value = params.baseRadiusFactor;
+      if (params.ledD !== undefined) ui.ledD.value = params.ledD;
+      if (params.ledLen !== undefined) ui.ledLen.value = params.ledLen;
+      if (params.drainAngleDeg !== undefined) ui.drainAngle.value = params.drainAngleDeg;
+      if (params.drainHoleDiameter !== undefined) ui.drainDiameter.value = params.drainHoleDiameter;
+      if (params.postBaseFilletRadius !== undefined) ui.postBaseFillet.value = Math.abs(params.postBaseFilletRadius);
+      if (params.postTailFilletRadius !== undefined) ui.postTailFillet.value = Math.abs(params.postTailFilletRadius);
+      if (params.noBase !== undefined) ui.noBase.checked = !!params.noBase;
+      if (params.invertBase !== undefined) ui.invertBase.checked = !!params.invertBase;
+      if (params.noDrain !== undefined) ui.noDrain.checked = !!params.noDrain;
+      updateLabels();
+      drawProfile();
+    }
+
+    function applyPreset(name) {
+      const presets = {
+        circle: { profileLength: 100, profileThickness: FIXED_PROFILE_THICKNESS, p: 2, q: 2, alpha: 0, beta: 0 },
+        ellipse: { profileLength: 185.71, profileThickness: FIXED_PROFILE_THICKNESS, p: 2, q: 2, alpha: 0, beta: 0 },
+        egg: { profileLength: 179.31, profileThickness: FIXED_PROFILE_THICKNESS, p: 2.1, q: 1.6, alpha: -0.35, beta: 0.18 },
+        cigar: { profileLength: 309.09, profileThickness: FIXED_PROFILE_THICKNESS, p: 2.2, q: 5.5, alpha: 0.0, beta: -0.05 },
+        teardrop: { profileLength: 213.33, profileThickness: FIXED_PROFILE_THICKNESS, p: 1.6, q: 1.25, alpha: -0.55, beta: 0.2 },
+        tictac: { profileLength: 183.33, profileThickness: FIXED_PROFILE_THICKNESS, p: 2.0, q: 1000, alpha: 0.0, beta: -0.5 },
+        custom: { profileLength: 216.67, profileThickness: FIXED_PROFILE_THICKNESS, p: 2, q: 2, alpha: 0, beta: 0 }
+      };
+      setParams({ preset: name, ...(presets[name] || presets.custom) });
+    }
+
+    function updateLabels() {
+      let displayLength = Number(ui.length.value);
+      let displayThickness = Number(ui.thickness.value);
+      try {
+        const solved = solveOuterDimensions(getParams());
+        if (Number.isFinite(solved.length)) {
+          displayLength = solved.length;
+        }
+        if (Number.isFinite(solved.diameter)) {
+          displayThickness = solved.diameter;
+        }
+      } catch {
+        // Keep slider values while fields are temporarily incomplete during editing.
+      }
+      ui.lengthVal.textContent = `${displayLength.toFixed(1)} mm`;
+      ui.thicknessVal.textContent = `${displayThickness.toFixed(1)} mm`;
+      ui.pVal.textContent = Number(ui.p.value).toFixed(2);
+      ui.qVal.textContent = Number(ui.q.value).toFixed(2);
+      const alphaValue = Number(ui.alpha.value).toFixed(2);
+      const betaValue = Number(ui.beta.value).toFixed(2);
+      const alphaLabel = ui.alpha.closest(".control")?.querySelector("label");
+      const betaLabel = ui.beta.closest(".control")?.querySelector("label");
+      if (alphaLabel) alphaLabel.dataset.inlineValue = alphaValue;
+      if (betaLabel) betaLabel.dataset.inlineValue = betaValue;
+      ui.alphaVal.textContent = alphaValue;
+      ui.betaVal.textContent = betaValue;
+    }
+
+    function profileRadiusFactor(params, s) {
+      s = Math.max(-1.0, Math.min(1.0, s));
+      if (params.preset === "tictac") {
+        const epsilon = 0.15;
+        const rounded = Math.max(0.0, 1.0 - Math.pow(Math.abs(s), 18));
+        return Math.pow(rounded, 0.5) * (1.0 - epsilon + epsilon * (1.0 - s * s));
+      }
+
+      const core = Math.max(0.0, 1.0 - Math.pow(Math.abs(s), params.q));
+      const radius = Math.pow(core, 1.0 / params.p);
+      const modifier = 1.0 + params.alpha * s + params.beta * (1.0 - s * s);
+      return Math.max(0.0, radius * Math.max(0.0, modifier));
+    }
+
+    function sampledProfilePoints(params, samples = 320) {
+      const halfThickness = params.profileThickness * 0.5;
+      const pts = [];
+      for (let i = 0; i <= samples; i += 1) {
+        const t = i / samples;
+        const s = 1.0 - 2.0 * t;
+        const radius = profileRadiusFactor(params, s) * halfThickness;
+        const z = t * params.profileLength;
+        pts.push({ z, r: radius });
+      }
+      return pts;
+    }
+
+    function solveReferenceOuterVolume(params, samples = 4096) {
+      let total = 0.0;
+      const step = 1.0 / samples;
+      let previous = 0.0;
+      for (let i = 0; i <= samples; i += 1) {
+        const t = i / samples;
+        const s = 1.0 - 2.0 * t;
+        const radius = 0.5 * params.profileThickness * profileRadiusFactor(params, s);
+        const area = Math.PI * radius * radius;
+        if (i > 0) {
+          total += 0.5 * (previous + area) * (params.profileLength * step);
+        }
+        previous = area;
+      }
+      return total;
+    }
+
+    function boreArea(params) {
+      return Math.PI * Math.pow(params.bore * 0.5, 2);
+    }
+
+    function ledOpenVolume(params) {
+      return Math.PI * Math.pow(params.ledD * 0.5, 2) * params.ledLen;
+    }
+
+    function solvedTargetVolume(params) {
+      return params.buoyancyG * 1000.0 + ledOpenVolume(params);
+    }
+
+    function solveProfileScale(params) {
+      const referenceOuterVolume = solveReferenceOuterVolume(params);
+      const targetVolume = solvedTargetVolume(params);
+      let low = 0.0;
+      let high = Math.max(1.0, Math.cbrt(targetVolume / Math.max(referenceOuterVolume, 1e-9)));
+
+      while (
+        referenceOuterVolume * high * high * high
+          - boreArea(params) * (params.profileLength * high)
+          - targetVolume < 0.0
+      ) {
+        high *= 2.0;
+      }
+
+      for (let i = 0; i < 48; i += 1) {
+        const mid = 0.5 * (low + high);
+        const netVolume = referenceOuterVolume * mid * mid * mid
+          - boreArea(params) * (params.profileLength * mid)
+          - targetVolume;
+        if (netVolume < 0.0) {
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+      return high;
+    }
+
+    function solveOuterDimensions(params) {
+      const scale = solveProfileScale(params);
+      return {
+        scale,
+        length: params.profileLength * scale,
+        diameter: params.profileThickness * scale
+      };
+    }
+
+    function rAtLocal(params, zLocal, length) {
+      const scale = length / params.profileLength;
+      const halfThickness = 0.5 * params.profileThickness * scale;
+      const s = 1.0 - 2.0 * (zLocal / length);
+      return profileRadiusFactor(params, s) * halfThickness;
+    }
+
+    function rInnerLocal(params, zLocal, length) {
+      return Math.max(0.05, rAtLocal(params, zLocal, length) - params.wallThickness);
+    }
+
+    function firstLocalZForRadius(params, length, targetRadius) {
+      if (targetRadius <= 0.0) return 0.0;
+      let lower = 0.0;
+      let upper = Math.min(length, 1.0);
+      while (upper < length && rAtLocal(params, upper, length) < targetRadius) {
+        lower = upper;
+        upper = Math.min(length, upper * 2.0);
+      }
+      if (rAtLocal(params, upper, length) < targetRadius) {
+        return length;
+      }
+      for (let i = 0; i < 24; i += 1) {
+        const mid = 0.5 * (lower + upper);
+        if (rAtLocal(params, mid, length) < targetRadius) {
+          lower = mid;
+        } else {
+          upper = mid;
+        }
+      }
+      return upper;
+    }
+
+    function rAtLocalOriented(params, zLocal, length, invertOrientation) {
+      const sampleLocalZ = invertOrientation ? (length - zLocal) : zLocal;
+      return rAtLocal(params, sampleLocalZ, length);
+    }
+
+    function firstLocalZForRadiusOriented(params, length, targetRadius, invertOrientation) {
+      if (targetRadius <= 0.0) return 0.0;
+      let lower = 0.0;
+      let upper = Math.min(length, 1.0);
+      while (upper < length && rAtLocalOriented(params, upper, length, invertOrientation) < targetRadius) {
+        lower = upper;
+        upper = Math.min(length, upper * 2.0);
+      }
+      if (rAtLocalOriented(params, upper, length, invertOrientation) < targetRadius) {
+        return length;
+      }
+      for (let i = 0; i < 24; i += 1) {
+        const mid = 0.5 * (lower + upper);
+        if (rAtLocalOriented(params, mid, length, invertOrientation) < targetRadius) {
+          lower = mid;
+        } else {
+          upper = mid;
+        }
+      }
+      return upper;
+    }
+
+    function profileSampleFractionsByDelta(params, length, samples, radiusAt) {
+      const fineSteps = Math.max(samples * 12, 1024);
+      const cumulative = [0.0];
+      let totalWeight = 0.0;
+      let previous = radiusAt(0.0);
+      for (let i = 1; i <= fineSteps; i += 1) {
+        const frac = i / fineSteps;
+        const radius = radiusAt(length * frac);
+        totalWeight += Math.max(Math.abs(radius - previous), 1e-6);
+        cumulative.push(totalWeight);
+        previous = radius;
+      }
+      if (totalWeight <= 0.0) {
+        return Array.from({ length: samples + 1 }, (_, i) => i / samples);
+      }
+      const fractions = [0.0];
+      let idx = 1;
+      for (let i = 1; i < samples; i += 1) {
+        const target = totalWeight * i / samples;
+        while (idx < cumulative.length - 1 && cumulative[idx] < target) {
+          idx += 1;
+        }
+        const lowWeight = cumulative[idx - 1];
+        const highWeight = cumulative[idx];
+        const span = Math.max(highWeight - lowWeight, 1e-9);
+        const localT = (target - lowWeight) / span;
+        fractions.push(Math.max(0.0, Math.min(1.0, ((idx - 1) + localT) / fineSteps)));
+      }
+      fractions.push(1.0);
+      return fractions;
+    }
+
+    function makeCircleWire(oc, radius, z, segments = CIRCLE_SEGMENTS) {
+      const r = Math.max(0.05, radius);
+      const polygon = instantiateAvailable(oc, ["BRepBuilderAPI_MakePolygon_1"], []);
+      for (let i = 0; i < segments; i += 1) {
+        const angle = (i / segments) * Math.PI * 2.0;
+        const point = new oc.gp_Pnt_3(r * Math.cos(angle), r * Math.sin(angle), z);
+        callFirstAvailable(polygon, ["Add_1", "Add"], [point]);
+      }
+      callFirstAvailable(polygon, ["Close"], []);
+      return callFirstAvailable(polygon, ["Wire"], []);
+    }
+
+    function buildSectionLoft(oc, sections) {
+      const tool = new oc.BRepOffsetAPI_ThruSections(true, false, 1.0e-3);
+      for (const section of sections) {
+        tool.AddWire(makeCircleWire(oc, section.radius, section.z));
+      }
+      tool.CheckCompatibility(false);
+      return tool.Shape();
+    }
+
+    function linearSampleFractions(samples) {
+      return Array.from({ length: samples + 1 }, (_, i) => i / samples);
+    }
+
+    function buildLatheSections(params, length, bodyZ0, offset = 0.0, samples = LOFT_SECTION_COUNT) {
+      const fractions = linearSampleFractions(samples);
+      return fractions.map((fraction) => {
+        const zLocal = length * fraction;
+        const baseRadius = offset > 0.0
+          ? Math.max(0.05, rInnerLocal(params, zLocal, length))
+          : Math.max(0.05, rAtLocal(params, zLocal, length));
+        return { z: bodyZ0 + zLocal, radius: baseRadius };
+      });
+    }
+
+    function buildOuterProfilePolyline(params, length, bodyZ0, samples = PROFILE_SAMPLES) {
+      const fractions = linearSampleFractions(samples);
+      return fractions.map((fraction) => {
+        const zLocal = length * fraction;
+        return {
+          x: Math.max(0.0, rAtLocal(params, zLocal, length)),
+          z: bodyZ0 + zLocal
+        };
+      });
+    }
+
+    function buildInnerOffsetPolyline(params, outerPoints, bodyZ0, length) {
+      const minRadius = 0.05;
+      const minZ = bodyZ0 + Math.max(params.wallThickness * 0.25, 0.05);
+      const maxZ = bodyZ0 + length - Math.max(params.wallThickness * 0.25, 0.05);
+      const rawInner = [];
+
+      for (let i = 0; i < outerPoints.length; i += 1) {
+        const prev = outerPoints[Math.max(i - 1, 0)];
+        const next = outerPoints[Math.min(i + 1, outerPoints.length - 1)];
+        const dx = next.x - prev.x;
+        const dz = next.z - prev.z;
+        const tangentLength = Math.hypot(dx, dz);
+        if (tangentLength <= 1.0e-9) {
+          continue;
+        }
+
+        const inwardNormalX = -dz / tangentLength;
+        const inwardNormalZ = dx / tangentLength;
+        const outer = outerPoints[i];
+        let innerX = outer.x + inwardNormalX * params.wallThickness;
+        let innerZ = outer.z + inwardNormalZ * params.wallThickness;
+
+        innerX = Math.min(innerX, outer.x - 0.01);
+        if (innerX <= minRadius || innerZ <= minZ || innerZ >= maxZ) {
+          continue;
+        }
+        rawInner.push({ x: innerX, z: innerZ });
+      }
+
+      const inner = [];
+      let lastZ = -Infinity;
+      for (const point of rawInner) {
+        if (point.z <= lastZ + 1.0e-3) {
+          continue;
+        }
+        inner.push(point);
+        lastZ = point.z;
+      }
+
+      if (inner.length < 2) {
+        throw new Error("Shell thickness is too large for this profile.");
+      }
+      return inner;
+    }
+
+    function interpolatePointAtX(a, b, targetX) {
+      const dx = b.x - a.x;
+      if (Math.abs(dx) <= 1.0e-9) {
+        return { x: targetX, z: a.z };
+      }
+      const t = Math.max(0.0, Math.min(1.0, (targetX - a.x) / dx));
+      return {
+        x: targetX,
+        z: a.z + (b.z - a.z) * t
+      };
+    }
+
+    function trimProfileToVerticals(points, topTargetX, bottomTargetX) {
+      if (!points || points.length < 2) {
+        return points ? points.slice() : [];
+      }
+
+      let startPoint = points[0];
+      let startIndex = 0;
+      for (let i = 1; i < points.length; i += 1) {
+        const prev = points[i - 1];
+        const curr = points[i];
+        if (curr.x >= topTargetX) {
+          startPoint = prev.x >= topTargetX ? prev : interpolatePointAtX(prev, curr, topTargetX);
+          startIndex = i;
+          break;
+        }
+      }
+
+      let endPoint = points[points.length - 1];
+      let endIndex = points.length - 1;
+      for (let i = points.length - 1; i > 0; i -= 1) {
+        const prev = points[i - 1];
+        const curr = points[i];
+        if (prev.x >= bottomTargetX) {
+          endPoint = curr.x >= bottomTargetX ? curr : interpolatePointAtX(prev, curr, bottomTargetX);
+          endIndex = i - 1;
+          break;
+        }
+      }
+
+      const trimmed = [];
+      pushUniqueProfilePoint(trimmed, startPoint);
+      for (let i = startIndex; i <= endIndex; i += 1) {
+        pushUniqueProfilePoint(trimmed, points[i]);
+      }
+      pushUniqueProfilePoint(trimmed, endPoint);
+      return trimmed;
+    }
+
+    function findProfilePointAtX(points, targetX, fromStart = true) {
+      if (!points || points.length < 2) {
+        return points && points.length ? { x: targetX, z: points[0].z } : { x: targetX, z: 0.0 };
+      }
+
+      if (fromStart) {
+        for (let i = 1; i < points.length; i += 1) {
+          const prev = points[i - 1];
+          const curr = points[i];
+          if (curr.x >= targetX) {
+            return prev.x >= targetX ? { x: prev.x, z: prev.z } : interpolatePointAtX(prev, curr, targetX);
+          }
+        }
+        const last = points[points.length - 1];
+        return { x: Math.max(targetX, last.x), z: last.z };
+      }
+
+      for (let i = points.length - 1; i > 0; i -= 1) {
+        const prev = points[i - 1];
+        const curr = points[i];
+        if (prev.x >= targetX) {
+          return curr.x >= targetX ? { x: curr.x, z: curr.z } : interpolatePointAtX(prev, curr, targetX);
+        }
+      }
+
+      const first = points[0];
+      return { x: Math.max(targetX, first.x), z: first.z };
+    }
+
+    function sliceProfileByZ(points, startPoint, endPoint, tolerance = 1.0e-6) {
+      const sliced = [];
+      pushUniqueProfilePoint(sliced, startPoint, tolerance);
+      for (const point of points) {
+        if (point.z > startPoint.z + tolerance && point.z < endPoint.z - tolerance) {
+          pushUniqueProfilePoint(sliced, point, tolerance);
+        }
+      }
+      pushUniqueProfilePoint(sliced, endPoint, tolerance);
+      return sliced;
+    }
+
+    function normalizeAnglePositive(angle) {
+      let normalized = angle % (2.0 * Math.PI);
+      if (normalized < 0.0) {
+        normalized += 2.0 * Math.PI;
+      }
+      return normalized;
+    }
+
+    function solveWallFilletOnPolyline(points, wallX, requestedRadius, isTopFillet) {
+      if (!points || points.length < 2 || requestedRadius <= 1.0e-6) {
+        return null;
+      }
+
+      const maxAttempts = 18;
+      for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
+        const radius = requestedRadius * (1.0 - attempt / maxAttempts);
+        if (radius <= 1.0e-6) {
+          break;
+        }
+
+        const centerX = wallX + radius;
+        const indices = isTopFillet
+          ? Array.from({ length: points.length - 1 }, (_, i) => i)
+          : Array.from({ length: points.length - 1 }, (_, i) => points.length - 2 - i);
+
+        for (const i of indices) {
+          const a = points[i];
+          const b = points[i + 1];
+          const dx = b.x - a.x;
+          const dz = b.z - a.z;
+          const segLength = Math.hypot(dx, dz);
+          if (segLength <= 1.0e-9 || Math.abs(dx) <= 1.0e-9) {
+            continue;
+          }
+
+          const normalX = -dz / segLength;
+          const normalZ = dx / segLength;
+          if (normalX >= -1.0e-6) {
+            continue;
+          }
+
+          let t = (centerX - (a.x + normalX * radius)) / dx;
+          if (t < -1.0e-6 || t > 1.0 + 1.0e-6) {
+            continue;
+          }
+          t = Math.max(0.0, Math.min(1.0, t));
+
+          const tangent = {
+            x: a.x + dx * t,
+            z: a.z + dz * t
+          };
+          const center = {
+            x: centerX,
+            z: tangent.z + normalZ * radius
+          };
+          const wall = {
+            x: wallX,
+            z: center.z
+          };
+
+          if (isTopFillet && center.z <= tangent.z + 1.0e-6) {
+            continue;
+          }
+          if (!isTopFillet && center.z >= tangent.z - 1.0e-6) {
+            continue;
+          }
+
+          const tangentAngle = normalizeAnglePositive(Math.atan2(tangent.z - center.z, tangent.x - center.x));
+          if (isTopFillet) {
+            // Bottom/base fillet: allow any tangent on the lower half of the circle.
+            if (tangentAngle < Math.PI - 1.0e-6) {
+              continue;
+            }
+          } else {
+            // Top/tail fillet: allow any tangent on the upper half of the circle.
+            if (tangentAngle > Math.PI + 1.0e-6) {
+              continue;
+            }
+          }
+
+          return {
+            radius,
+            tangent,
+            center,
+            wall,
+            tangentAngle
+          };
+        }
+      }
+
+      return null;
+    }
+
+    function makeShelfCornerFillet(wallX, shelfPoint, requestedRadius, isBottomFillet) {
+      const horizontalGap = shelfPoint.x - wallX;
+      const radius = Math.max(0.0, Math.min(requestedRadius, horizontalGap));
+      if (radius <= 1.0e-6) {
+        return null;
+      }
+
+      if (isBottomFillet) {
+        return {
+          radius,
+          tangent: {
+            x: wallX + radius,
+            z: shelfPoint.z
+          },
+          center: {
+            x: wallX + radius,
+            z: shelfPoint.z + radius
+          },
+          wall: {
+            x: wallX,
+            z: shelfPoint.z + radius
+          },
+          tangentAngle: 1.5 * Math.PI
+        };
+      }
+
+      return {
+        radius,
+        tangent: {
+          x: wallX + radius,
+          z: shelfPoint.z
+        },
+        center: {
+          x: wallX + radius,
+          z: shelfPoint.z - radius
+        },
+        wall: {
+          x: wallX,
+          z: shelfPoint.z - radius
+        },
+        tangentAngle: 0.5 * Math.PI
+      };
+    }
+
+    function makeProfileWire(oc, points) {
+      const polygon = instantiateAvailable(oc, ["BRepBuilderAPI_MakePolygon_1", "BRepBuilderAPI_MakePolygon"], []);
+      for (const point of points) {
+        callFirstAvailable(polygon, ["Add_1", "Add"], [new oc.gp_Pnt_3(point.x, 0, point.z)]);
+      }
+      callFirstAvailable(polygon, ["Close"], []);
+      return callFirstAvailable(polygon, ["Wire"], []);
+    }
+
+    function makeWireFrom3dPoints(oc, points, close = true) {
+      const polygon = instantiateAvailable(oc, ["BRepBuilderAPI_MakePolygon_1", "BRepBuilderAPI_MakePolygon"], []);
+      for (const point of points) {
+        callFirstAvailable(polygon, ["Add_1", "Add"], [new oc.gp_Pnt_3(point[0], point[1], point[2])]);
+      }
+      if (close) {
+        callFirstAvailable(polygon, ["Close"], []);
+      }
+      return callFirstAvailable(polygon, ["Wire"], []);
+    }
+
+    function makeFaceFromWire(oc, wire) {
+      return shapeOf(
+        instantiateAvailableVariants(oc, [
+          {
+            names: [
+              "BRepBuilderAPI_MakeFace_16",
+              "BRepBuilderAPI_MakeFace_15",
+              "BRepBuilderAPI_MakeFace_8",
+              "BRepBuilderAPI_MakeFace_6",
+              "BRepBuilderAPI_MakeFace_1",
+              "BRepBuilderAPI_MakeFace"
+            ],
+            args: [wire, true]
+          },
+          {
+            names: [
+              "BRepBuilderAPI_MakeFace_16",
+              "BRepBuilderAPI_MakeFace_15",
+              "BRepBuilderAPI_MakeFace_8",
+              "BRepBuilderAPI_MakeFace_6",
+              "BRepBuilderAPI_MakeFace_1",
+              "BRepBuilderAPI_MakeFace"
+            ],
+            args: [wire]
+          }
+        ])
+      );
+    }
+
+    function makeFaceFromWires(oc, outerWire, innerWires = []) {
+      const maker = instantiateAvailableVariants(oc, [
+        {
+          names: [
+            "BRepBuilderAPI_MakeFace_16",
+            "BRepBuilderAPI_MakeFace_15",
+            "BRepBuilderAPI_MakeFace_8",
+            "BRepBuilderAPI_MakeFace_6",
+            "BRepBuilderAPI_MakeFace_1",
+            "BRepBuilderAPI_MakeFace"
+          ],
+          args: [outerWire, true]
+        },
+        {
+          names: [
+            "BRepBuilderAPI_MakeFace_16",
+            "BRepBuilderAPI_MakeFace_15",
+            "BRepBuilderAPI_MakeFace_8",
+            "BRepBuilderAPI_MakeFace_6",
+            "BRepBuilderAPI_MakeFace_1",
+            "BRepBuilderAPI_MakeFace"
+          ],
+          args: [outerWire]
+        }
+      ]);
+      for (const innerWire of innerWires) {
+        callFirstAvailable(maker, ["Add_1", "Add"], [innerWire]);
+      }
+      return shapeOf(callFirstAvailable(maker, ["Face", "Shape"], []));
+    }
+
+    function makeRevolveProfileFace(oc, profilePoints) {
+      if (!profilePoints || profilePoints.length < 2) {
+        throw new Error("At least two profile points are required for revolve.");
+      }
+      const start = profilePoints[0];
+      const end = profilePoints[profilePoints.length - 1];
+      const closedProfile = [{ x: 0.0, z: start.z }, ...profilePoints, { x: 0.0, z: end.z }];
+      const wire = makeProfileWire(oc, closedProfile);
+      return makeFaceFromWire(oc, wire);
+    }
+
+    function revolveShape(oc, shape) {
+      const axisPoint = new oc.gp_Pnt_3(0, 0, 0);
+      const axisDir = instantiateAvailable(oc, ["gp_Dir_4", "gp_Dir_2", "gp_Dir"], [0, 0, 1]);
+      const axis = instantiateAvailableVariants(oc, [
+        { names: ["gp_Ax1_3", "gp_Ax1_2", "gp_Ax1"], args: [axisPoint, axisDir] }
+      ]);
+      return shapeOf(
+        instantiateAvailableVariants(oc, [
+          { names: ["BRepPrimAPI_MakeRevol_1", "BRepPrimAPI_MakeRevol"], args: [shape, axis] },
+          { names: ["BRepPrimAPI_MakeRevol_2", "BRepPrimAPI_MakeRevol"], args: [shape, axis, 2.0 * Math.PI] },
+          { names: ["BRepPrimAPI_MakeRevol_3", "BRepPrimAPI_MakeRevol"], args: [shape, axis, 2.0 * Math.PI, false] }
+        ])
+      );
+    }
+
+    function pushUniqueProfilePoint(points, point, tolerance = 1.0e-3) {
+      const previous = points[points.length - 1];
+      if (
+        previous
+        && Math.abs(previous.x - point.x) <= tolerance
+        && Math.abs(previous.z - point.z) <= tolerance
+      ) {
+        return;
+      }
+      points.push(point);
+    }
+
+    function buildInternalCavityProfilePoints(params, length, bodyZ0, postOuterRadius) {
+      const outerProfile = buildOuterProfilePolyline(params, length, bodyZ0, PROFILE_SAMPLES);
+      const rawInnerProfile = buildInnerOffsetPolyline(params, outerProfile, bodyZ0, length);
+      if (rawInnerProfile.length < 2) {
+        throw new Error("Inner cavity profile is too short.");
+      }
+
+      const rawStart = rawInnerProfile[0];
+      const rawEnd = rawInnerProfile[rawInnerProfile.length - 1];
+      const verticalSpan = Math.max(0.2, Math.abs(rawEnd.z - rawStart.z));
+      const maxInnerX = rawInnerProfile.reduce((maxValue, point) => Math.max(maxValue, point.x), 0.0);
+      const maxHorizontalGap = Math.max(0.0, maxInnerX - postOuterRadius);
+      let baseRadius = Math.abs(params.postBaseFilletRadius || 0.0);
+      let tailRadius = Math.abs(params.postTailFilletRadius || 0.0);
+      baseRadius = Math.min(
+        baseRadius,
+        verticalSpan * 0.45
+      );
+      tailRadius = Math.min(
+        tailRadius,
+        Math.max(0.0, verticalSpan - baseRadius),
+        verticalSpan * 0.45
+      );
+      baseRadius = Math.min(baseRadius, maxHorizontalGap);
+      tailRadius = Math.min(tailRadius, maxHorizontalGap);
+      const baseShelfPoint = findProfilePointAtX(
+        rawInnerProfile,
+        postOuterRadius + Math.max(baseRadius, 0.05),
+        true
+      );
+      const tailShelfPoint = findProfilePointAtX(
+        rawInnerProfile,
+        postOuterRadius + Math.max(tailRadius, 0.05),
+        false
+      );
+      const baseFillet = solveWallFilletOnPolyline(rawInnerProfile, postOuterRadius, baseRadius, true)
+        || makeShelfCornerFillet(postOuterRadius, baseShelfPoint, baseRadius, true);
+      const tailFillet = solveWallFilletOnPolyline(rawInnerProfile, postOuterRadius, tailRadius, false)
+        || makeShelfCornerFillet(postOuterRadius, tailShelfPoint, tailRadius, false);
+      baseRadius = baseFillet ? baseFillet.radius : 0.0;
+      tailRadius = tailFillet ? tailFillet.radius : 0.0;
+
+      const start = baseFillet
+        ? baseFillet.tangent
+        : findProfilePointAtX(rawInnerProfile, postOuterRadius, true);
+      const end = tailFillet
+        ? tailFillet.tangent
+        : findProfilePointAtX(rawInnerProfile, postOuterRadius, false);
+      const innerProfile = sliceProfileByZ(rawInnerProfile, start, end);
+
+      const cavityProfile = [];
+      const baseFilletPath = [];
+      const tailFilletPath = [];
+      if (baseFillet) {
+        pushUniqueProfilePoint(cavityProfile, baseFillet.wall);
+        pushUniqueProfilePoint(baseFilletPath, baseFillet.wall);
+        for (const point of sampleArcPoints(
+          baseFillet.center.x,
+          baseFillet.center.z,
+          baseFillet.radius,
+          Math.PI,
+          baseFillet.tangentAngle,
+          16
+        )) {
+          pushUniqueProfilePoint(cavityProfile, point);
+          pushUniqueProfilePoint(baseFilletPath, point);
+        }
+      } else {
+        const baseWallPoint = {
+          x: postOuterRadius,
+          z: start.z
+        };
+        pushUniqueProfilePoint(cavityProfile, baseWallPoint);
+        pushUniqueProfilePoint(baseFilletPath, baseWallPoint);
+      }
+
+      pushUniqueProfilePoint(cavityProfile, start);
+      pushUniqueProfilePoint(baseFilletPath, start);
+      for (let i = 1; i < innerProfile.length - 1; i += 1) {
+        pushUniqueProfilePoint(cavityProfile, innerProfile[i]);
+      }
+      pushUniqueProfilePoint(cavityProfile, end);
+      pushUniqueProfilePoint(tailFilletPath, end);
+
+      if (tailFillet) {
+        for (const point of sampleArcPoints(
+          tailFillet.center.x,
+          tailFillet.center.z,
+          tailFillet.radius,
+          tailFillet.tangentAngle,
+          Math.PI,
+          16
+        )) {
+          pushUniqueProfilePoint(cavityProfile, point);
+          pushUniqueProfilePoint(tailFilletPath, point);
+        }
+      } else {
+        const tailWallPoint = {
+          x: postOuterRadius,
+          z: end.z
+        };
+        pushUniqueProfilePoint(cavityProfile, tailWallPoint);
+        pushUniqueProfilePoint(tailFilletPath, tailWallPoint);
+      }
+
+      return {
+        points: cavityProfile,
+        baseRadius,
+        tailRadius,
+        baseFilletPath,
+        tailFilletPath
+      };
+    }
+
+    function buildInternalCavityWithPostFilletsByRevolve(oc, params, length, bodyZ0, postOuterRadius) {
+      const profile = buildInternalCavityProfilePoints(params, length, bodyZ0, postOuterRadius);
+      const face = makeRevolveProfileFace(oc, profile.points);
+      return {
+        shape: revolveShape(oc, face),
+        baseRadius: profile.baseRadius,
+        tailRadius: profile.tailRadius
+      };
+    }
+
+    function buildOuterHullByRevolve(oc, params, length, bodyZ0) {
+      const outerProfile = buildOuterProfilePolyline(params, length, bodyZ0, PROFILE_SAMPLES);
+      const outerFace = makeRevolveProfileFace(oc, outerProfile);
+      return revolveShape(oc, outerFace);
+    }
+
+    function buildShellWithPostFilletsByRevolve(oc, params, length, bodyZ0, postOuterRadius) {
+      const boreRadius = Math.max(0.05, params.bore * 0.5);
+      const outerProfile = trimProfileToVerticals(
+        buildOuterProfilePolyline(params, length, bodyZ0, PROFILE_SAMPLES),
+        boreRadius,
+        boreRadius
+      );
+      const cavityProfile = buildInternalCavityProfilePoints(
+        params,
+        length,
+        bodyZ0,
+        postOuterRadius
+      );
+      const sectionProfile = [
+        { x: boreRadius, z: outerProfile[0].z },
+        ...outerProfile,
+        { x: boreRadius, z: outerProfile[outerProfile.length - 1].z }
+      ];
+      const outerWire = makeProfileWire(oc, sectionProfile);
+      const cavityWire = makeProfileWire(oc, cavityProfile.points);
+      const face = makeFaceFromWires(oc, outerWire, [cavityWire]);
+      const boreStartZ = cavityProfile.points[0].z;
+      const boreEndZ = cavityProfile.points[cavityProfile.points.length - 1].z;
+      return {
+        sectionFace: face,
+        shape: revolveShape(oc, face),
+        baseRadius: cavityProfile.baseRadius,
+        tailRadius: cavityProfile.tailRadius,
+        cavityProfilePoints: cavityProfile.points.map((point) => ({ ...point })),
+        boreStartZ,
+        boreEndZ
+      };
+    }
+
+    function buildBoreCutByRevolve(oc, params, boreStartZ, boreEndZ) {
+      const boreRadius = Math.max(0.05, params.bore * 0.5);
+      const boreProfile = [
+        { x: 0.0, z: boreStartZ },
+        { x: boreRadius, z: boreStartZ },
+        { x: boreRadius, z: boreEndZ },
+        { x: 0.0, z: boreEndZ }
+      ];
+      const boreFace = makeFaceFromWire(oc, makeProfileWire(oc, boreProfile));
+      return revolveShape(oc, boreFace);
+    }
+
+    function sampleArcPoints(centerX, centerZ, radius, startAngle, endAngle, segments = 8) {
+      const pts = [];
+      for (let i = 1; i <= segments; i += 1) {
+        const t = i / segments;
+        const angle = startAngle + (endAngle - startAngle) * t;
+        pts.push({
+          x: centerX + Math.cos(angle) * radius,
+          z: centerZ + Math.sin(angle) * radius
+        });
+      }
+      return pts;
+    }
+
+    function cross2d(a, b) {
+      return a.x * b.z - a.z * b.x;
+    }
+
+    function intersectRayWithSegment2D(origin, direction, a, b, tolerance = 1.0e-6) {
+      const segment = {
+        x: b.x - a.x,
+        z: b.z - a.z
+      };
+      const denominator = cross2d(direction, segment);
+      if (Math.abs(denominator) <= tolerance) {
+        return null;
+      }
+
+      const offset = {
+        x: a.x - origin.x,
+        z: a.z - origin.z
+      };
+      const tRay = cross2d(offset, segment) / denominator;
+      const tSegment = cross2d(offset, direction) / denominator;
+      if (tRay <= tolerance || tSegment < -tolerance || tSegment > 1.0 + tolerance) {
+        return null;
+      }
+
+      return {
+        t: tRay,
+        point: {
+          x: origin.x + direction.x * tRay,
+          z: origin.z + direction.z * tRay
+        }
+      };
+    }
+
+    function findRayHitsOnClosedProfile(origin, direction, profilePoints, tolerance = 1.0e-5) {
+      if (!profilePoints || profilePoints.length < 2) {
+        return [];
+      }
+
+      const hits = [];
+      for (let i = 0; i < profilePoints.length; i += 1) {
+        const a = profilePoints[i];
+        const b = profilePoints[(i + 1) % profilePoints.length];
+        const hit = intersectRayWithSegment2D(origin, direction, a, b, tolerance);
+        if (!hit) {
+          continue;
+        }
+        const duplicate = hits.some((existing) => Math.abs(existing.t - hit.t) <= tolerance);
+        if (!duplicate) {
+          hits.push(hit);
+        }
+      }
+
+      if (!hits.length) {
+        return [];
+      }
+
+      hits.sort((left, right) => left.t - right.t);
+      return hits;
+    }
+
+    function findFirstRayHitOnClosedProfile(origin, direction, profilePoints, tolerance = 1.0e-5) {
+      const hits = findRayHitsOnClosedProfile(origin, direction, profilePoints, tolerance);
+      return hits.length ? hits[0] : null;
+    }
+
+    function shapeOf(result) {
+      return typeof result.Shape === "function" ? result.Shape() : result;
+    }
+
+    function makeVector(oc, x, y, z) {
+      return instantiateAvailable(oc, ["gp_Vec_4", "gp_Vec_2", "gp_Vec_1", "gp_Vec"], [x, y, z]);
+    }
+
+    function extrudeShape(oc, shape, dx, dy, dz) {
+      const vec = makeVector(oc, dx, dy, dz);
+      return shapeOf(
+        instantiateAvailableVariants(oc, [
+          {
+            names: ["BRepPrimAPI_MakePrism_1", "BRepPrimAPI_MakePrism"],
+            args: [shape, vec, false, true]
+          },
+          {
+            names: ["BRepPrimAPI_MakePrism_2", "BRepPrimAPI_MakePrism"],
+            args: [shape, vec, false, false, true]
+          }
+        ])
+      );
+    }
+
+    function cross3d(a, b) {
+      return {
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x
+      };
+    }
+
+    function normalize3d(vector) {
+      const magnitude = Math.hypot(vector.x, vector.y, vector.z);
+      if (magnitude <= 1.0e-9) {
+        throw new Error("Vector is too small to normalize.");
+      }
+      return {
+        x: vector.x / magnitude,
+        y: vector.y / magnitude,
+        z: vector.z / magnitude
+      };
+    }
+
+    function fuseShapes(oc, a, b) {
+      return shapeOf(
+        instantiateAvailableVariants(oc, [
+          { names: ["BRepAlgoAPI_Fuse_2", "BRepAlgoAPI_Fuse"], args: [a, b] },
+          { names: ["BRepAlgoAPI_Fuse_3"], args: [a, b] }
+        ])
+      );
+    }
+
+    function cutShapes(oc, a, b) {
+      return shapeOf(
+        instantiateAvailableVariants(oc, [
+          { names: ["BRepAlgoAPI_Cut_2", "BRepAlgoAPI_Cut"], args: [a, b] },
+          { names: ["BRepAlgoAPI_Cut_3"], args: [a, b] }
+        ])
+      );
+    }
+
+    function intersectShapes(oc, a, b) {
+      return shapeOf(
+        instantiateAvailableVariants(oc, [
+          { names: ["BRepAlgoAPI_Common_2", "BRepAlgoAPI_Common"], args: [a, b] },
+          { names: ["BRepAlgoAPI_Common_3"], args: [a, b] }
+        ])
+      );
+    }
+
+    function makeCylinderBetween(oc, start, end, radius) {
+      const dx = end[0] - start[0];
+      const dy = end[1] - start[1];
+      const dz = end[2] - start[2];
+      const length = Math.hypot(dx, dy, dz);
+      if (length <= 1e-6) {
+        throw new Error("Cylinder axis is too short.");
+      }
+      const location = new oc.gp_Pnt_3(start[0], start[1], start[2]);
+      const direction = instantiateAvailable(oc, ["gp_Dir_4", "gp_Dir_2"], [dx / length, dy / length, dz / length]);
+      const axis = new oc.gp_Ax2_3(location, direction);
+      return shapeOf(new oc.BRepPrimAPI_MakeCylinder_3(axis, radius, length));
+    }
+
+    function makeBoxFromCorner(oc, corner, dx, dy, dz) {
+      return shapeOf(
+        instantiateAvailableVariants(oc, [
+          { names: ["BRepPrimAPI_MakeBox_4", "BRepPrimAPI_MakeBox_2", "BRepPrimAPI_MakeBox"], args: [corner, dx, dy, dz] }
+        ])
+      );
+    }
+
+    function transformShape(oc, shape, trsf) {
+      return shapeOf(
+        instantiateAvailableVariants(oc, [
+          { names: ["BRepBuilderAPI_Transform_2", "BRepBuilderAPI_Transform"], args: [shape, trsf, true] },
+          { names: ["BRepBuilderAPI_Transform_1", "BRepBuilderAPI_Transform"], args: [shape, trsf] }
+        ])
+      );
+    }
+
+    function rotateShapeAroundYAxis(oc, shape, pivotX, pivotY, pivotZ, angleDeg) {
+      const trsf = instantiateAvailable(oc, ["gp_Trsf_1", "gp_Trsf"], []);
+      const axisPoint = new oc.gp_Pnt_3(pivotX, pivotY, pivotZ);
+      const axisDir = instantiateAvailable(oc, ["gp_Dir_4", "gp_Dir_2", "gp_Dir"], [0, 1, 0]);
+      const axis = instantiateAvailableVariants(oc, [
+        { names: ["gp_Ax1_3", "gp_Ax1_2", "gp_Ax1"], args: [axisPoint, axisDir] }
+      ]);
+      callFirstAvailableVariant(trsf, [
+        { names: ["SetRotation_1", "SetRotation"], args: [axis, angleDeg * Math.PI / 180.0] }
+      ]);
+      return transformShape(oc, shape, trsf);
+    }
+
+    function rotateShapeAroundXAxis(oc, shape, pivotX, pivotY, pivotZ, angleDeg) {
+      const trsf = instantiateAvailable(oc, ["gp_Trsf_1", "gp_Trsf"], []);
+      const axisPoint = new oc.gp_Pnt_3(pivotX, pivotY, pivotZ);
+      const axisDir = instantiateAvailable(oc, ["gp_Dir_4", "gp_Dir_2", "gp_Dir"], [1, 0, 0]);
+      const axis = instantiateAvailableVariants(oc, [
+        { names: ["gp_Ax1_3", "gp_Ax1_2", "gp_Ax1"], args: [axisPoint, axisDir] }
+      ]);
+      callFirstAvailableVariant(trsf, [
+        { names: ["SetRotation_1", "SetRotation"], args: [axis, angleDeg * Math.PI / 180.0] }
+      ]);
+      return transformShape(oc, shape, trsf);
+    }
+
+    function cutCylinderEndAtAngle(oc, cylinder, {
+      centerX,
+      diameter,
+      z0,
+      height,
+      angleDeg
+    }) {
+      if (angleDeg <= 0.0) {
+        return cylinder;
+      }
+
+      const cutSpan = Math.max(height, diameter) * 4.0;
+      const pivotZ = z0 + height;
+      const sideSign = centerX >= 0.0 ? 1.0 : -1.0;
+      const pivotX = centerX - sideSign * diameter * 0.5;
+      const cutter = makeBoxFromCorner(
+        oc,
+        new oc.gp_Pnt_3(pivotX - cutSpan * 0.5, -cutSpan * 0.5, pivotZ),
+        cutSpan,
+        cutSpan,
+        cutSpan
+      );
+      const rotatedCutter = rotateShapeAroundYAxis(
+        oc,
+        cutter,
+        pivotX,
+        0.0,
+        pivotZ,
+        sideSign * angleDeg
+      );
+      return cutShapes(oc, cylinder, rotatedCutter);
+    }
+
+    function makeVerticalCylinder(oc, centerX, centerY, z0, z1, radius) {
+      return makeCylinderBetween(oc, [centerX, centerY, z0], [centerX, centerY, z1], radius);
+    }
+
+    function makeSquareBeam(oc, start, end, size) {
+      const dx = end[0] - start[0];
+      const dy = end[1] - start[1];
+      const dz = end[2] - start[2];
+      const length = Math.hypot(dx, dy, dz);
+      if (length <= 1.0e-6) {
+        throw new Error("Square beam axis is too short.");
+      }
+
+      const direction = normalize3d({ x: dx, y: dy, z: dz });
+      const reference = Math.abs(direction.z) < 0.9
+        ? { x: 0, y: 0, z: 1 }
+        : { x: 0, y: 1, z: 0 };
+      const xAxis = normalize3d(cross3d(reference, direction));
+      const yAxis = normalize3d(cross3d(direction, xAxis));
+      const half = size * 0.5;
+      const square = [
+        [
+          start[0] - xAxis.x * half - yAxis.x * half,
+          start[1] - xAxis.y * half - yAxis.y * half,
+          start[2] - xAxis.z * half - yAxis.z * half
+        ],
+        [
+          start[0] + xAxis.x * half - yAxis.x * half,
+          start[1] + xAxis.y * half - yAxis.y * half,
+          start[2] + xAxis.z * half - yAxis.z * half
+        ],
+        [
+          start[0] + xAxis.x * half + yAxis.x * half,
+          start[1] + xAxis.y * half + yAxis.y * half,
+          start[2] + xAxis.z * half + yAxis.z * half
+        ],
+        [
+          start[0] - xAxis.x * half + yAxis.x * half,
+          start[1] - xAxis.y * half + yAxis.y * half,
+          start[2] - xAxis.z * half + yAxis.z * half
+        ]
+      ];
+      const face = makeFaceFromWire(oc, makeWireFrom3dPoints(oc, square));
+      return extrudeShape(oc, face, dx, dy, dz);
+    }
+
+    function buildTripodBeams(oc, params, length, bodyZ0, diameter, baseRadius, baseAnchorZ) {
+      const targets = [];
+      const addRing = (worldZ, azimuthOffsetDeg) => {
+        if (!Number.isFinite(worldZ) || worldZ <= 0) return;
+        const inputLocalZ = worldZ - bodyZ0;
+        const localZ = Math.max(0.5, Math.min(length - 0.5, inputLocalZ));
+        const attachWorldZ = bodyZ0 + localZ;
+        const attachRadius = Math.max(1.0, rAtLocalOriented(params, localZ, length, params.invertBase));
+        for (const baseAngle of [0, 120, 240]) {
+          const angleDeg = params.tripodOffsetDeg + azimuthOffsetDeg + baseAngle;
+          const angleRad = angleDeg * Math.PI / 180.0;
+          const top = [
+            attachRadius * Math.cos(angleRad),
+            attachRadius * Math.sin(angleRad),
+            attachWorldZ
+          ];
+          const bottom = [
+            (baseRadius - 2.4) * Math.cos(angleRad),
+            (baseRadius - 2.4) * Math.sin(angleRad),
+            baseAnchorZ
+          ];
+          targets.push(makeSquareBeam(oc, bottom, top, params.legThickness));
+        }
+      };
+
+      addRing(params.tripodAttachZ, 0.0);
+      if (params.tripodAttachZ2 > 0.0) {
+        addRing(params.tripodAttachZ2, 60.0);
+      }
+
+      if (!targets.length) {
+        return null;
+      }
+
+      return targets.reduce((acc, leg) => (acc ? fuseShapes(oc, acc, leg) : leg), null);
+    }
+
+    async function buildFloatShape(oc, params, onStep = null) {
+      const { scale, length, diameter } = solveOuterDimensions(params);
+      const bodyZ0 = params.noBase ? 0.0 : params.baseThickness + params.floatBaseGap;
+      const postOuterRadius = params.bore * 0.5 + params.wallThickness;
+      const ledAxis = params.ledCenterOffset;
+      await yieldToBrowser("Building shell profile…");
+      const shellResult = buildShellWithPostFilletsByRevolve(
+        oc,
+        params,
+        length,
+        bodyZ0,
+        postOuterRadius
+      );
+      const cavityResult = buildInternalCavityWithPostFilletsByRevolve(
+        oc,
+        params,
+        length,
+        bodyZ0,
+        postOuterRadius
+      );
+      const outerWorld = buildOuterHullByRevolve(oc, params, length, bodyZ0);
+      const innerCavityWorld = cavityResult.shape;
+      const shellOnly = cutShapes(oc, outerWorld, innerCavityWorld);
+      const boreCore = makeVerticalCylinder(
+        oc,
+        0,
+        0,
+        bodyZ0,
+        bodyZ0 + length + 0.8,
+        postOuterRadius
+      );
+      const boreSupportTopZ = bodyZ0 + length + 0.8;
+      const boreCut = makeVerticalCylinder(
+        oc,
+        0,
+        0,
+        bodyZ0 - 1.0,
+        boreSupportTopZ + 1.0,
+        Math.max(0.05, params.bore * 0.5)
+      );
+      const internalCavity = cutShapes(oc, innerCavityWorld, boreCore);
+      await yieldToBrowser("Revolving shell and post…");
+      let body = cutShapes(oc, outerWorld, internalCavity);
+      let drainActive = false;
+      const buildMetrics = (buildStage) => ({
+        scale,
+        length,
+        diameter,
+        bodyStartZ: bodyZ0,
+        targetBuoyantVolumeCm3: params.buoyancyG,
+        ledAxisOffset: ledAxis,
+        drainActive,
+        postBaseFilletRadius: cavityResult.baseRadius,
+        postTailFilletRadius: cavityResult.tailRadius,
+        buildStage
+      });
+      async function emitStep(buildStage, shape) {
+        if (!onStep || !shape) return;
+        await onStep({
+          shape,
+          metrics: buildMetrics(buildStage)
+        });
+      }
+      await yieldToBrowser("Cutting bore…");
+      body = cutShapes(oc, body, boreCut);
+      await emitStep("Shell + Post + Bore", body);
+
+      const ledSleeveRaw = makeVerticalCylinder(
+        oc,
+        ledAxis,
+        0,
+        bodyZ0,
+        bodyZ0 + params.ledLen,
+        params.ledD * 0.5 + params.wallThickness
+      );
+      const ledSleeveCut = cutCylinderEndAtAngle(oc, ledSleeveRaw, {
+        centerX: ledAxis,
+        diameter: 2.0 * (params.ledD * 0.5 + params.wallThickness),
+        z0: bodyZ0,
+        height: params.ledLen,
+        angleDeg: LED_SLEEVE_END_CUT_DEG
+      });
+      const ledBayRaw = makeVerticalCylinder(
+        oc,
+        ledAxis,
+        0,
+        bodyZ0 - 0.5,
+        bodyZ0 + Math.max(params.ledLen + 0.5, params.wallThickness) + 0.5,
+        params.ledD * 0.5
+      );
+      const ledBayCut = cutCylinderEndAtAngle(oc, ledBayRaw, {
+        centerX: ledAxis,
+        diameter: params.ledD,
+        z0: bodyZ0 - 0.5,
+        height: Math.max(params.ledLen + 0.5, params.wallThickness) + 1.0,
+        angleDeg: LED_SLEEVE_END_CUT_DEG
+      });
+      const ledSleeve = intersectShapes(oc, ledSleeveCut, outerWorld);
+      const ledBay = intersectShapes(oc, ledBayCut, outerWorld);
+      await yieldToBrowser("Adding LED sleeve…");
+      try {
+        const ledSleeveRing = cutShapes(oc, ledSleeve, ledBay);
+        const ledFill = intersectShapes(oc, ledSleeveRing, internalCavity);
+        body = fuseShapes(oc, body, ledFill);
+        await emitStep("LED Sleeve", body);
+      } catch (err) {
+        console.warn("LED sleeve trim skipped:", err);
+      }
+      await yieldToBrowser("Cutting LED bay…");
+      body = cutShapes(oc, body, ledBay);
+      await emitStep("LED Bay", body);
+      if (!params.noDrain && params.drainHoleDiameter > 0.0) {
+        const drainStartLocalZ = Math.min(length - 0.2, Math.max(params.drainHoleDiameter, 0.2));
+        const directionSign = ledAxis >= 0.0 ? -1.0 : 1.0;
+        const angleRad = params.drainAngleDeg * Math.PI / 180.0;
+        const drainStartRadius = 0.0;
+        const drainStart2d = {
+          x: drainStartRadius,
+          z: bodyZ0 + drainStartLocalZ
+        };
+        const drainDirection2d = {
+          x: Math.cos(angleRad),
+          z: Math.sin(angleRad)
+        };
+        const drainHits = findRayHitsOnClosedProfile(
+          drainStart2d,
+          drainDirection2d,
+          shellResult.cavityProfilePoints
+        );
+        const drainExitHit = drainHits.length >= 2 ? drainHits[1] : (drainHits.length === 1 ? drainHits[0] : null);
+        if (!drainExitHit) {
+          console.warn("Drain hole skipped: no valid cavity exit found.");
+        } else {
+          const drainRadius = params.drainHoleDiameter * 0.5;
+          const cavityWallClearance = Math.max(0.05, drainRadius + 0.02);
+          const drainLengthTrim = cavityWallClearance + Math.max(0.0, params.wallThickness);
+          const drainEndT = Math.max(0.05, drainExitHit.t - drainLengthTrim);
+          const drainStart = [
+            directionSign * drainStartRadius,
+            0,
+            drainStart2d.z
+          ];
+          const drainEnd = [
+            directionSign * Math.max(
+              0.0,
+              drainStart2d.x + drainDirection2d.x * drainEndT
+            ),
+            0,
+            drainStart2d.z + drainDirection2d.z * drainEndT
+          ];
+          const drainCut = makeCylinderBetween(oc, drainStart, drainEnd, drainRadius);
+        await yieldToBrowser("Cutting drain hole…");
+        body = cutShapes(oc, body, drainCut);
+        drainActive = true;
+        await emitStep("Drain Hole", body);
+      }
+
+      }
+
+      if (params.invertBase) {
+        await yieldToBrowser("Rotating float 180° for inverted base…");
+        body = rotateShapeAroundXAxis(oc, body, 0.0, 0.0, bodyZ0 + 0.5 * length, 180.0);
+        await emitStep("Float Rotated 180", body);
+      }
+
+      if (!params.noBase) {
+        const supportRadius = postOuterRadius;
+        const supportLocalZ = firstLocalZForRadiusOriented(
+          params,
+          length,
+          supportRadius,
+          params.invertBase
+        );
+        const supportAttachZ = bodyZ0 + supportLocalZ;
+        const baseRadius = Math.max(diameter * params.baseRadiusFactor, supportRadius + 8.0);
+        const baseBottomZ = 0.0;
+        const baseTopZ = params.baseThickness;
+        const baseAnchorZ = baseTopZ;
+        const basePlate = makeVerticalCylinder(oc, 0, 0, baseBottomZ, baseTopZ, baseRadius);
+        const support = makeVerticalCylinder(oc, 0, 0, baseAnchorZ, supportAttachZ, supportRadius);
+        await yieldToBrowser("Adding base support…");
+        body = fuseShapes(oc, body, basePlate);
+        body = fuseShapes(oc, body, support);
+        await yieldToBrowser("Building tripod…");
+        const tripod = buildTripodBeams(oc, params, length, bodyZ0, diameter, baseRadius, baseAnchorZ);
+        if (tripod) {
+          await yieldToBrowser("Fusing tripod…");
+          body = fuseShapes(oc, body, tripod);
+        }
+        await emitStep("Base Support + Tripod", body);
+      }
+
+      return {
+        shape: body,
+        metrics: buildMetrics("Final")
+      };
+    }
+
+    async function tessellateShape(oc, shape) {
+      new oc.BRepMesh_IncrementalMesh_2(shape, DEFAULT_LINEAR_DEFLECTION, false, DEFAULT_ANGULAR_DEFLECTION, false);
+      const positions = [];
+      const normals = [];
+      const indices = [];
+      let vertexOffset = 0;
+      let faceCount = 0;
+      const explorer = new oc.TopExp_Explorer_1();
+      explorer.Init(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      for (; explorer.More(); explorer.Next()) {
+        faceCount += 1;
+        if (faceCount % 8 === 0) {
+          await yieldToBrowser("Meshing preview…");
+        }
+        const face = oc.TopoDS.Face_1(explorer.Current());
+        const location = new oc.TopLoc_Location_1();
+        const triangulationHandle = callFunctionVariants(
+          oc.BRep_Tool.Triangulation.bind(oc.BRep_Tool),
+          [
+            [face, location],
+            [face, location, 0]
+          ]
+        );
+        if (triangulationHandle.IsNull()) {
+          continue;
+        }
+        const triangulation = triangulationHandle.get();
+        const transform = location.Transformation();
+        const connect = new oc.Poly_Connect_2(triangulationHandle);
+        const faceNormals = new oc.TColgp_Array1OfDir_2(1, triangulation.NbNodes());
+        oc.StdPrs_ToolTriangulatedShape.Normal(face, connect, faceNormals);
+
+        for (let nodeIndex = 1; nodeIndex <= triangulation.NbNodes(); nodeIndex += 1) {
+          const p = triangulation.Node(nodeIndex).Transformed(transform);
+          positions.push(p.X(), p.Y(), p.Z());
+          const n = faceNormals.Value(nodeIndex).Transformed(transform);
+          normals.push(n.X(), n.Y(), n.Z());
+        }
+
+        const triangles = triangulation.Triangles();
+        const forward = face.Orientation_1() === oc.TopAbs_Orientation.TopAbs_FORWARD;
+        for (let triIndex = 1; triIndex <= triangulation.NbTriangles(); triIndex += 1) {
+          const tri = triangles.Value(triIndex);
+          let n1 = tri.Value(1) - 1;
+          let n2 = tri.Value(2) - 1;
+          let n3 = tri.Value(3) - 1;
+          if (!forward) {
+            const tmp = n1;
+            n1 = n2;
+            n2 = tmp;
+          }
+          indices.push(vertexOffset + n1, vertexOffset + n2, vertexOffset + n3);
+        }
+
+        vertexOffset += triangulation.NbNodes();
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+      geometry.setIndex(indices);
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+      return geometry;
+    }
+
+    function disposeCurrentMesh() {
+      if (!state.currentMesh) return;
+      disposeSectionBox();
+      if (state.currentOverlay) {
+        state.scene.remove(state.currentOverlay);
+        state.currentOverlay.geometry.dispose();
+        state.currentOverlay.material.dispose();
+        state.currentOverlay = null;
+      }
+      state.scene.remove(state.currentMesh);
+      state.currentMesh.geometry.dispose();
+      state.currentMesh.material.dispose();
+      state.currentMesh = null;
+    }
+
+    function fitCameraToCurrentMesh(viewMode = "auto") {
+      if (!state.currentMesh) return;
+      const box = new THREE.Box3().setFromObject(state.currentMesh);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxSize = Math.max(size.x, size.y, size.z, 1);
+      const distance = maxSize * 2.2;
+      if (viewMode === "front") {
+        state.camera.position.set(center.x, center.y, center.z + distance);
+      } else {
+        state.camera.position.set(center.x + distance, center.y + distance * 0.7, center.z + distance);
+      }
+      state.controls.target.copy(center);
+      state.controls.update();
+    }
+
+    async function renderCurrentShape(shape, metrics, options = {}) {
+      const hadMesh = Boolean(state.currentMesh);
+      const persistedViewport = hadMesh ? buildSavePayload().viewport : state.pendingViewportState;
+      const preservedView = options.preserveView || null;
+      const isFinal = (options.final !== undefined ? options.final : true) && metrics?.buildStage !== "2D Section";
+      disposeCurrentMesh();
+      const geometry = await tessellateShape(state.oc, shape);
+      const isSectionStage = metrics?.buildStage === "2D Section";
+      const material = createPreviewMeshMaterial(isSectionStage);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.rotation.x = -Math.PI / 2;
+      state.scene.add(mesh);
+      state.currentMesh = mesh;
+      if (isSectionStage) {
+        const edgeLines = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geometry),
+          new THREE.LineBasicMaterial({
+            color: 0x1b2b38,
+            depthTest: false,
+            transparent: false
+          })
+        );
+        edgeLines.rotation.copy(mesh.rotation);
+        edgeLines.renderOrder = 10;
+        state.scene.add(edgeLines);
+        state.currentOverlay = edgeLines;
+      }
+      state.currentMetrics = metrics;
+      applyMeshTransparency();
+      const fitCamera = options.fitCamera !== undefined
+        ? options.fitCamera
+        : (!preservedView && (!isFinal || (!hadMesh && !state.restoreViewportOnNextRender)));
+      if (fitCamera) {
+        fitCameraToCurrentMesh(isSectionStage ? "front" : "auto");
+      }
+      if (isSectionStage) {
+        disposeSectionBox();
+      } else {
+        buildSectionBoxForMesh(mesh);
+        if (preservedView) {
+          applySavedCameraState(preservedView.camera);
+          if (preservedView.viewport?.sectionBoxCurrent) {
+            applySavedSectionBoxBounds(preservedView.viewport.sectionBoxCurrent);
+          }
+        } else if (persistedViewport && isFinal) {
+          state.pendingViewportState = persistedViewport;
+          applyPendingViewportStateToCurrentMesh();
+        }
+      }
+      state.restoreViewportOnNextRender = false;
+      ui.exportStepBtn.disabled = !isFinal;
+      ui.exportStlBtn.disabled = !isFinal;
+      renderMetrics(metrics);
+    }
+
+    function renderMetrics(metrics) {
+      ui.viewportStage.textContent = `Stage: ${metrics.buildStage ?? "Final"}`;
+      ui.metrics.innerHTML = [
+        `Scale: <code>${metrics.scale.toFixed(4)}</code>`,
+        `Length: <code>${metrics.length.toFixed(2)} mm</code>`,
+        `Diameter: <code>${metrics.diameter.toFixed(2)} mm</code>`,
+        `Body start: <code>${metrics.bodyStartZ.toFixed(2)} mm</code>`,
+        `Target buoyancy: <code>${metrics.targetBuoyantVolumeCm3.toFixed(2)} cm^3</code>`,
+        `LED axis offset: <code>${metrics.ledAxisOffset.toFixed(2)} mm</code>`,
+        `Drain hole: <code>${metrics.drainActive ? "on" : "off"}</code>`,
+        `Post base fillet: <code>${metrics.postBaseFilletRadius.toFixed(2)} mm</code>`,
+        `Post tail fillet: <code>${metrics.postTailFilletRadius.toFixed(2)} mm</code>`
+      ].join("<br>");
+    }
+
+    function buildMirroredSectionOutline(points) {
+      return [
+        ...points.map((pt) => ({ x: pt.x, y: pt.z })),
+        ...points.slice().reverse().map((pt) => ({ x: -pt.x, y: pt.z }))
+      ];
+    }
+
+    function traceSectionPolygon(ctx, points, projectPoint) {
+      if (!points.length) return;
+      ctx.beginPath();
+      for (let i = 0; i < points.length; i += 1) {
+        const projected = projectPoint(points[i]);
+        if (i === 0) {
+          ctx.moveTo(projected.x, projected.y);
+        } else {
+          ctx.lineTo(projected.x, projected.y);
+        }
+      }
+      ctx.closePath();
+    }
+
+    function drawArrowHead(ctx, tipX, tipY, dirX, dirY, size) {
+      const len = Math.hypot(dirX, dirY) || 1.0;
+      const ux = dirX / len;
+      const uy = dirY / len;
+      const px = -uy;
+      const py = ux;
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(tipX - ux * size + px * size * 0.55, tipY - uy * size + py * size * 0.55);
+      ctx.lineTo(tipX - ux * size - px * size * 0.55, tipY - uy * size - py * size * 0.55);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawDirectionIndicator(ctx, centerX, centerY, axis, color) {
+      const len = 24;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 1.4;
+      const segments = [];
+      if (axis === "x" || axis === "xy") {
+        segments.push({ dx: len, dy: 0 });
+      }
+      if (axis === "y" || axis === "xy") {
+        segments.push({ dx: 0, dy: -len });
+      }
+      for (const segment of segments) {
+        ctx.beginPath();
+        ctx.moveTo(centerX - segment.dx, centerY - segment.dy);
+        ctx.lineTo(centerX + segment.dx, centerY + segment.dy);
+        ctx.stroke();
+        drawArrowHead(ctx, centerX + segment.dx, centerY + segment.dy, segment.dx, segment.dy, 6);
+        drawArrowHead(ctx, centerX - segment.dx, centerY - segment.dy, -segment.dx, -segment.dy, 6);
+      }
+      ctx.restore();
+    }
+
+    function drawHandleLabel(ctx, text, x, y, align = "center", rotationDeg = 0) {
+      ctx.save();
+      ctx.font = "12px ui-sans-serif, system-ui, -apple-system, Segoe UI";
+      const padX = 6;
+      const padY = 4;
+      const metrics = ctx.measureText(text);
+      const width = metrics.width + padX * 2;
+      const height = 18;
+      const angle = Number(rotationDeg) * Math.PI / 180.0;
+      ctx.translate(x, y);
+      if (Math.abs(angle) > 1.0e-9) {
+        ctx.rotate(angle);
+      }
+      let left = -width * 0.5;
+      if (align === "left") left = 0;
+      if (align === "right") left = -width;
+      const top = -height * 0.5;
+      ctx.fillStyle = "rgba(8, 12, 16, 0.88)";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+      ctx.lineWidth = 1;
+      ctx.fillRect(left, top, width, height);
+      ctx.strokeRect(left, top, width, height);
+      ctx.fillStyle = "rgba(234, 242, 250, 0.96)";
+      ctx.fillText(text, left + padX, top + height - padY - 1);
+      ctx.restore();
+    }
+
+    function traceSectionPolyline(ctx, points, projectPoint) {
+      if (!points.length) return;
+      ctx.beginPath();
+      for (let i = 0; i < points.length; i += 1) {
+        const projected = projectPoint(points[i]);
+        if (i === 0) {
+          ctx.moveTo(projected.x, projected.y);
+        } else {
+          ctx.lineTo(projected.x, projected.y);
+        }
+      }
+    }
+
+    function drawSectionMarkers(ctx, points, projectPoint, radius, fillStyle, strokeStyle = "rgba(10,14,18,0.9)") {
+      if (!points.length) return;
+      ctx.save();
+      ctx.fillStyle = fillStyle;
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = 1;
+      for (const point of points) {
+        const projected = projectPoint(point);
+        ctx.beginPath();
+        ctx.arc(projected.x, projected.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawFilletGuideLine(ctx, points, projectPoint, strokeStyle, labelText = "") {
+      if (!points || points.length < 2) {
+        return;
+      }
+      const start = projectPoint(points[0]);
+      const end = projectPoint(points[points.length - 1]);
+      ctx.save();
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      if (labelText) {
+        drawHandleLabel(
+          ctx,
+          labelText,
+          0.5 * (start.x + end.x),
+          0.5 * (start.y + end.y) - 14,
+          "center"
+        );
+      }
+    }
+
+    function buildAngledTubeSection(centerX, outerRadius, innerRadius, z0, height, angleDeg) {
+      const topZ = z0 + Math.max(0.0, height);
+      const sideSign = centerX >= 0.0 ? 1.0 : -1.0;
+      const slope = angleDeg > 0.0 ? Math.tan(angleDeg * Math.PI / 180.0) : 0.0;
+
+      function buildRadiusProfile(radius) {
+        if (!(radius > 0.0)) {
+          return [];
+        }
+        const leftX = centerX - radius;
+        const rightX = centerX + radius;
+        if (!(slope > 0.0)) {
+          return [
+            { x: leftX, y: z0 },
+            { x: rightX, y: z0 },
+            { x: rightX, y: topZ },
+            { x: leftX, y: topZ }
+          ];
+        }
+        const pivotX = centerX - sideSign * radius;
+        const topAt = (x) => {
+          const distanceAcross = Math.max(0.0, sideSign * (x - pivotX));
+          return Math.max(z0, topZ - distanceAcross * slope);
+        };
+        return [
+          { x: leftX, y: z0 },
+          { x: rightX, y: z0 },
+          { x: rightX, y: topAt(rightX) },
+          { x: leftX, y: topAt(leftX) }
+        ];
+      }
+
+      return {
+        outer: buildRadiusProfile(outerRadius),
+        inner: buildRadiusProfile(innerRadius)
+      };
+    }
+
+    function buildDrainHoleSectionOverlay(params, bodyZ0, length, cavityProfilePoints) {
+      if (params.noDrain || !(params.drainHoleDiameter > 0.0) || !Array.isArray(cavityProfilePoints) || cavityProfilePoints.length < 2) {
+        return null;
+      }
+      const drainStartLocalZ = Math.min(length - 0.2, Math.max(params.drainHoleDiameter, 0.2));
+      const directionSign = params.ledCenterOffset >= 0.0 ? -1.0 : 1.0;
+      const angleRad = params.drainAngleDeg * Math.PI / 180.0;
+      const drainStart2d = { x: 0.0, z: bodyZ0 + drainStartLocalZ };
+      const drainDirection2d = { x: Math.cos(angleRad), z: Math.sin(angleRad) };
+      const drainHits = findRayHitsOnClosedProfile(drainStart2d, drainDirection2d, cavityProfilePoints);
+      const drainExitHit = drainHits.length >= 2 ? drainHits[1] : (drainHits.length === 1 ? drainHits[0] : null);
+      if (!drainExitHit) {
+        return null;
+      }
+      const drainRadius = params.drainHoleDiameter * 0.5;
+      const cavityWallClearance = Math.max(0.05, drainRadius + 0.02);
+      const drainLengthTrim = cavityWallClearance + Math.max(0.0, params.wallThickness);
+      const drainEndT = Math.max(0.05, drainExitHit.t - drainLengthTrim);
+      const start = { x: 0.0, y: drainStart2d.z };
+      const end = {
+        x: directionSign * Math.max(0.0, drainStart2d.x + drainDirection2d.x * drainEndT),
+        y: drainStart2d.z + drainDirection2d.z * drainEndT
+      };
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const axisLength = Math.hypot(dx, dy);
+      if (axisLength <= 1.0e-6) {
+        return null;
+      }
+      const nx = -dy / axisLength * drainRadius;
+      const ny = dx / axisLength * drainRadius;
+      return {
+        polygon: [
+          { x: start.x + nx, y: start.y + ny },
+          { x: end.x + nx, y: end.y + ny },
+          { x: end.x - nx, y: end.y - ny },
+          { x: start.x - nx, y: start.y - ny }
+        ],
+        centerline: [start, end]
+      };
+    }
+
+    function getInputRange(input) {
+      const minRaw = typeof input.min === "string" ? input.min.trim() : "";
+      const maxRaw = typeof input.max === "string" ? input.max.trim() : "";
+      const min = minRaw === "" ? -Infinity : Number(minRaw);
+      const max = maxRaw === "" ? Infinity : Number(maxRaw);
+      return {
+        min: Number.isFinite(min) ? min : -Infinity,
+        max: Number.isFinite(max) ? max : Infinity
+      };
+    }
+
+    function snapToInputStep(input, value) {
+      const step = Number(input.step);
+      if (!Number.isFinite(step) || step <= 0) {
+        return value;
+      }
+      const min = Number(input.min);
+      const base = Number.isFinite(min) ? min : 0;
+      return base + Math.round((value - base) / step) * step;
+    }
+
+    function setInputNumericValue(input, value) {
+      const previous = Number(input.value);
+      const range = getInputRange(input);
+      const clamped = THREE.MathUtils.clamp(value, range.min, range.max);
+      const snapped = snapToInputStep(input, clamped);
+      const finalValue = Number.isFinite(snapped) ? snapped : clamped;
+      if (!Number.isFinite(finalValue)) {
+        return false;
+      }
+      if (Number.isFinite(previous) && Math.abs(previous - finalValue) < 1.0e-9) {
+        return false;
+      }
+      input.value = String(finalValue);
+      return true;
+    }
+
+    function sanitizeProfileHandleOffsets(raw) {
+      if (!raw || typeof raw !== "object") {
+        return {};
+      }
+      const result = {};
+      for (const [id, value] of Object.entries(raw)) {
+        if (!value || typeof value !== "object") {
+          continue;
+        }
+        const x = Number(value.x);
+        const y = Number(value.y);
+        const safeX = Number.isFinite(x) ? x : 0;
+        const safeY = Number.isFinite(y) ? y : 0;
+        if (Math.abs(safeX) < 1.0e-6 && Math.abs(safeY) < 1.0e-6) {
+          continue;
+        }
+        result[id] = { x: safeX, y: safeY };
+      }
+      return result;
+    }
+
+    function getProfileHandleOffset(id) {
+      const raw = state.profileHandleOffsets?.[id];
+      const x = Number(raw?.x);
+      const y = Number(raw?.y);
+      return {
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0
+      };
+    }
+
+    function setProfileHandleOffset(id, x, y) {
+      const next = {
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0
+      };
+      const previous = getProfileHandleOffset(id);
+      if (Math.abs(previous.x - next.x) < 1.0e-6 && Math.abs(previous.y - next.y) < 1.0e-6) {
+        return false;
+      }
+      if (Math.abs(next.x) < 1.0e-6 && Math.abs(next.y) < 1.0e-6) {
+        delete state.profileHandleOffsets[id];
+      } else {
+        state.profileHandleOffsets[id] = next;
+      }
+      return true;
+    }
+
+    function getProfileCanvasPoint(event) {
+      const rect = profileCanvas.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      };
+    }
+
+    function pointToSegmentDistance(point, a, b) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const segmentLengthSq = dx * dx + dy * dy;
+      if (segmentLengthSq <= 1.0e-9) {
+        const px = point.x - a.x;
+        const py = point.y - a.y;
+        return Math.hypot(px, py);
+      }
+      const t = Math.max(0.0, Math.min(1.0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / segmentLengthSq));
+      const closestX = a.x + dx * t;
+      const closestY = a.y + dy * t;
+      return Math.hypot(point.x - closestX, point.y - closestY);
+    }
+
+    function isPointNearPolyline(point, polyline, thresholdPx = 10) {
+      if (!Array.isArray(polyline) || polyline.length < 2) {
+        return false;
+      }
+      for (let i = 1; i < polyline.length; i += 1) {
+        if (pointToSegmentDistance(point, polyline[i - 1], polyline[i]) <= thresholdPx) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function getProfileHandleAt(point) {
+      const interaction = state.profileFilletInteraction;
+      const handles = interaction?.handles;
+      if (!Array.isArray(handles) || !handles.length) {
+        return null;
+      }
+      for (let i = handles.length - 1; i >= 0; i -= 1) {
+        const handle = handles[i];
+        const dx = point.x - handle.x;
+        const dy = point.y - handle.y;
+        const radius = (handle.radius || 8) + 4;
+        if (dx * dx + dy * dy <= radius * radius) {
+          return handle;
+        }
+      }
+      const curveTargets = interaction?.curveTargets;
+      if (Array.isArray(curveTargets) && curveTargets.length) {
+        for (let i = curveTargets.length - 1; i >= 0; i -= 1) {
+          const target = curveTargets[i];
+          if (isPointNearPolyline(point, target.polyline, target.hitRadius || 10)) {
+            return target;
+          }
+        }
+      }
+      return null;
+    }
+
+    function getProfileKnobAt(point) {
+      const handles = state.profileFilletInteraction?.handles;
+      if (!Array.isArray(handles) || !handles.length) {
+        return null;
+      }
+      for (let i = handles.length - 1; i >= 0; i -= 1) {
+        const handle = handles[i];
+        const dx = point.x - handle.x;
+        const dy = point.y - handle.y;
+        const radius = (handle.radius || 8) + 4;
+        if (dx * dx + dy * dy <= radius * radius) {
+          return handle;
+        }
+      }
+      return null;
+    }
+
+    function getProfileDragTargetById(id) {
+      const interaction = state.profileFilletInteraction;
+      if (!interaction) {
+        return null;
+      }
+      const handles = Array.isArray(interaction.handles) ? interaction.handles : [];
+      const curveTargets = Array.isArray(interaction.curveTargets) ? interaction.curveTargets : [];
+      return [...handles, ...curveTargets].find((item) => item.id === id) || null;
+    }
+
+    function applyProfileHandleDrag(handle, startValue, dx, dy, point = null) {
+      if (handle.dragMode === "bi2d") {
+        const nextX = startValue.x
+          + dx * (Number.isFinite(handle.axisSignX) ? handle.axisSignX : 1)
+          * handle.sensitivityX;
+        const nextY = startValue.y
+          + dy * (Number.isFinite(handle.axisSignY) ? handle.axisSignY : -1)
+          * handle.sensitivityY;
+        const changedX = setInputNumericValue(handle.inputX, nextX);
+        const changedY = setInputNumericValue(handle.inputY, nextY);
+        return changedX || changedY;
+      }
+      if (handle.dragMode === "drainAngle") {
+        if (!point || !handle.anchor) {
+          return false;
+        }
+        const horizontal = Math.abs(point.x - handle.anchor.x);
+        const vertical = Math.max(0.0, handle.anchor.y - point.y);
+        const next = THREE.MathUtils.radToDeg(Math.atan2(vertical, Math.max(horizontal, 1.0e-6)));
+        return setInputNumericValue(handle.input, next);
+      }
+      const rawAxisDelta = handle.axis === "x" ? dx : dy;
+      const dragThresholdPx = Math.max(0, Number(handle.dragThresholdPx) || 0);
+      if (Math.abs(rawAxisDelta) <= dragThresholdPx) {
+        return false;
+      }
+      const effectiveAxisDelta = rawAxisDelta - Math.sign(rawAxisDelta) * dragThresholdPx;
+      const axisSign = Number.isFinite(handle.axisSign)
+        ? handle.axisSign
+        : (handle.axis === "x" ? 1 : -1);
+      const axisDelta = effectiveAxisDelta * axisSign;
+      const next = startValue + axisDelta * handle.sensitivity;
+      return setInputNumericValue(handle.input, next);
+    }
+
+    function getProfileHandleStartValue(handle) {
+      if (handle.dragMode === "bi2d") {
+        return {
+          x: Number(handle.inputX.value),
+          y: Number(handle.inputY.value)
+        };
+      }
+      return Number(handle.input.value);
+    }
+
+    function updateProfileCursor(point = null) {
+      if (state.profileFilletDrag) {
+        const dragHandle = state.profileFilletDrag.mode === "layout"
+          ? "move"
+          : (state.profileFilletDrag.cursor
+            || (state.profileFilletDrag.axis === "x" ? "ew-resize" : "ns-resize"));
+        profileCanvas.style.cursor = dragHandle;
+        return;
+      }
+      if (point) {
+        const hovered = getProfileHandleAt(point);
+        profileCanvas.style.cursor = hovered ? hovered.cursor : "default";
+        return;
+      }
+      profileCanvas.style.cursor = "default";
+    }
+
+    function drawProfile() {
+      const params = getParams();
+      const { length, diameter } = solveOuterDimensions(params);
+      const bodyZ0 = 0.0;
+      const boreRadius = Math.max(0.05, params.bore * 0.5);
+      const postOuterRadius = params.bore * 0.5 + params.wallThickness;
+      const outerProfile = trimProfileToVerticals(
+        buildOuterProfilePolyline(params, length, bodyZ0, PROFILE_SAMPLES),
+        boreRadius,
+        boreRadius
+      );
+      const cavityResult = buildInternalCavityProfilePoints(
+        params,
+        length,
+        bodyZ0,
+        postOuterRadius
+      );
+      const cavityProfile = cavityResult.points;
+      const materialBoundaryHalf = [
+        { x: boreRadius, y: outerProfile[0].z },
+        ...outerProfile.map((pt) => ({ x: pt.x, y: pt.z })),
+        { x: boreRadius, y: outerProfile[outerProfile.length - 1].z }
+      ];
+      const cavityBoundaryHalf = cavityProfile.map((pt) => ({ x: pt.x, y: pt.z }));
+      const cavityWallBoundaryHalf = cavityProfile.length >= 2
+        ? [
+            { x: cavityProfile[0].x, y: cavityProfile[0].z },
+            {
+              x: cavityProfile[cavityProfile.length - 1].x,
+              y: cavityProfile[cavityProfile.length - 1].z
+            }
+          ]
+        : [];
+      const baseFilletBoundaryHalf = cavityResult.baseFilletPath.map((pt) => ({ x: pt.x, y: pt.z }));
+      const tailFilletBoundaryHalf = cavityResult.tailFilletPath.map((pt) => ({ x: pt.x, y: pt.z }));
+      const mirroredOuter = buildMirroredSectionOutline(outerProfile);
+      const width = Math.max(320, profileCanvas.clientWidth);
+      const height = Math.max(320, profileCanvas.clientHeight);
+      if (profileCanvas.width !== width || profileCanvas.height !== height) {
+        profileCanvas.width = width;
+        profileCanvas.height = height;
+      }
+
+      profileCtx.clearRect(0, 0, width, height);
+      const minX = Math.min(...mirroredOuter.map((pt) => pt.x));
+      const maxX = Math.max(...mirroredOuter.map((pt) => pt.x));
+      const minY = Math.min(...mirroredOuter.map((pt) => pt.y));
+      const maxY = Math.max(...mirroredOuter.map((pt) => pt.y));
+      const boundsWidth = Math.max(maxX - minX, 0.001);
+      const boundsHeight = Math.max(maxY - minY, 0.001);
+      const padding = 62;
+      const scaleX = (width - 2 * padding) / boundsWidth;
+      const scaleY = (height - 2 * padding) / boundsHeight;
+      const scale = Math.max(0.1, Math.min(scaleX, scaleY));
+      const centerX = 0.0;
+      const centerY = 0.5 * (minY + maxY);
+      const cx = width * 0.5;
+      const canvasRect = profileCanvas.getBoundingClientRect();
+      const cy = window.innerHeight * 0.5 - canvasRect.top;
+      const projectPoint = (pt) => ({
+        x: cx + (pt.x - centerX) * scale,
+        y: cy - (pt.y - centerY) * scale
+      });
+      const projectMirrorPoint = (pt) => ({
+        x: cx + ((-pt.x) - centerX) * scale,
+        y: cy - (pt.y - centerY) * scale
+      });
+
+      profileCtx.strokeStyle = "rgba(255, 160, 64, 0.9)";
+      profileCtx.lineWidth = 1;
+      profileCtx.setLineDash([8, 6]);
+      profileCtx.beginPath();
+      profileCtx.moveTo(cx + (0 - centerX) * scale, cy - (minY - centerY) * scale);
+      profileCtx.lineTo(cx + (0 - centerX) * scale, cy - (maxY - centerY) * scale);
+      profileCtx.stroke();
+      profileCtx.setLineDash([]);
+
+      profileCtx.fillStyle = "rgba(126, 198, 255, 0.12)";
+      traceSectionPolygon(profileCtx, materialBoundaryHalf, projectPoint);
+      profileCtx.fill();
+      traceSectionPolygon(profileCtx, materialBoundaryHalf, projectMirrorPoint);
+      profileCtx.fill();
+
+      profileCtx.strokeStyle = "#7ec6ff";
+      profileCtx.lineWidth = 2;
+      traceSectionPolygon(profileCtx, materialBoundaryHalf, projectPoint);
+      profileCtx.stroke();
+      traceSectionPolygon(profileCtx, materialBoundaryHalf, projectMirrorPoint);
+      profileCtx.stroke();
+
+      profileCtx.strokeStyle = "rgba(231, 192, 120, 0.95)";
+      profileCtx.lineWidth = 1.5;
+      traceSectionPolyline(profileCtx, cavityBoundaryHalf, projectPoint);
+      profileCtx.stroke();
+      traceSectionPolyline(profileCtx, cavityBoundaryHalf, projectMirrorPoint);
+      profileCtx.stroke();
+      if (cavityWallBoundaryHalf.length === 2) {
+        traceSectionPolyline(profileCtx, cavityWallBoundaryHalf, projectPoint);
+        profileCtx.stroke();
+        traceSectionPolyline(profileCtx, cavityWallBoundaryHalf, projectMirrorPoint);
+        profileCtx.stroke();
+      }
+
+      profileCtx.strokeStyle = "rgba(255, 96, 160, 0.98)";
+      profileCtx.lineWidth = 5;
+      profileCtx.lineCap = "round";
+      profileCtx.lineJoin = "round";
+      if (cavityResult.baseRadius > 0.0) {
+        traceSectionPolyline(profileCtx, baseFilletBoundaryHalf, projectPoint);
+        profileCtx.stroke();
+        traceSectionPolyline(profileCtx, baseFilletBoundaryHalf, projectMirrorPoint);
+        profileCtx.stroke();
+        drawFilletGuideLine(
+          profileCtx,
+          baseFilletBoundaryHalf,
+          projectPoint,
+          "rgba(255, 160, 192, 0.9)"
+        );
+        drawFilletGuideLine(
+          profileCtx,
+          baseFilletBoundaryHalf,
+          projectMirrorPoint,
+          "rgba(255, 160, 192, 0.9)",
+          `R ${cavityResult.baseRadius.toFixed(1)} mm`
+        );
+      }
+      if (cavityResult.tailRadius > 0.0) {
+        traceSectionPolyline(profileCtx, tailFilletBoundaryHalf, projectPoint);
+        profileCtx.stroke();
+        traceSectionPolyline(profileCtx, tailFilletBoundaryHalf, projectMirrorPoint);
+        profileCtx.stroke();
+        drawFilletGuideLine(
+          profileCtx,
+          tailFilletBoundaryHalf,
+          projectPoint,
+          "rgba(255, 160, 192, 0.9)"
+        );
+        drawFilletGuideLine(
+          profileCtx,
+          tailFilletBoundaryHalf,
+          projectMirrorPoint,
+          "rgba(255, 160, 192, 0.9)",
+          `R ${cavityResult.tailRadius.toFixed(1)} mm`
+        );
+      }
+
+      const ledOuterRadius = params.ledD * 0.5 + params.wallThickness;
+      const ledInnerRadius = params.ledD * 0.5;
+      const ledSection = buildAngledTubeSection(
+        params.ledCenterOffset,
+        ledOuterRadius,
+        ledInnerRadius,
+        bodyZ0,
+        params.ledLen,
+        LED_SLEEVE_END_CUT_DEG
+      );
+      const ledLengthLine = ledSection.outer.length >= 4
+        ? [ledSection.outer[0], ledSection.outer[3]]
+        : [];
+      const ledDiameterLine = ledSection.outer.length >= 4
+        ? [ledSection.outer[0], ledSection.outer[1], ledSection.outer[2]]
+        : [];
+      if (ledSection.outer.length >= 3) {
+        profileCtx.fillStyle = "rgba(118, 224, 184, 0.16)";
+        traceSectionPolygon(profileCtx, ledSection.outer, projectPoint);
+        profileCtx.fill();
+        profileCtx.strokeStyle = "rgba(118, 224, 184, 0.95)";
+        profileCtx.lineWidth = 1.8;
+        traceSectionPolygon(profileCtx, ledSection.outer, projectPoint);
+        profileCtx.stroke();
+      }
+      if (ledSection.inner.length >= 3) {
+        profileCtx.strokeStyle = "rgba(92, 188, 255, 0.95)";
+        profileCtx.lineWidth = 1.5;
+        traceSectionPolygon(profileCtx, ledSection.inner, projectPoint);
+        profileCtx.stroke();
+      }
+      const ledOuterProjected = ledSection.outer.map(projectPoint);
+      const ledInnerProjected = ledSection.inner.map(projectPoint);
+      if (ledOuterProjected.length >= 4) {
+        const ledLengthStart = ledOuterProjected[0];
+        const ledLengthEnd = ledOuterProjected[3];
+        const ledLengthDimX = Math.max(...ledOuterProjected.map((pt) => pt.x)) + 24;
+        profileCtx.save();
+        profileCtx.strokeStyle = "rgba(118, 224, 184, 0.95)";
+        profileCtx.fillStyle = "rgba(118, 224, 184, 0.95)";
+        profileCtx.lineWidth = 1.4;
+        profileCtx.beginPath();
+        profileCtx.moveTo(ledLengthStart.x, ledLengthStart.y);
+        profileCtx.lineTo(ledLengthDimX, ledLengthStart.y);
+        profileCtx.moveTo(ledLengthEnd.x, ledLengthEnd.y);
+        profileCtx.lineTo(ledLengthDimX, ledLengthEnd.y);
+        profileCtx.moveTo(ledLengthDimX, ledLengthStart.y);
+        profileCtx.lineTo(ledLengthDimX, ledLengthEnd.y);
+        profileCtx.stroke();
+        drawArrowHead(profileCtx, ledLengthDimX, ledLengthStart.y, 0, 1, 6);
+        drawArrowHead(profileCtx, ledLengthDimX, ledLengthEnd.y, 0, -1, 6);
+        profileCtx.restore();
+        drawHandleLabel(
+          profileCtx,
+          `LED L ${Number(params.ledLen).toFixed(1)} mm`,
+          ledLengthDimX + 14,
+          0.5 * (ledLengthStart.y + ledLengthEnd.y),
+          "center",
+          -90
+        );
+      }
+      if (ledInnerProjected.length >= 2) {
+        const ledDiameterLeft = ledInnerProjected[0];
+        const ledDiameterRight = ledInnerProjected[1];
+        const ledDiameterDimY = Math.max(ledDiameterLeft.y, ledDiameterRight.y) + 26;
+        profileCtx.save();
+        profileCtx.strokeStyle = "rgba(92, 188, 255, 0.95)";
+        profileCtx.fillStyle = "rgba(92, 188, 255, 0.95)";
+        profileCtx.lineWidth = 1.4;
+        profileCtx.beginPath();
+        profileCtx.moveTo(ledDiameterLeft.x, ledDiameterLeft.y);
+        profileCtx.lineTo(ledDiameterLeft.x, ledDiameterDimY);
+        profileCtx.moveTo(ledDiameterRight.x, ledDiameterRight.y);
+        profileCtx.lineTo(ledDiameterRight.x, ledDiameterDimY);
+        profileCtx.moveTo(ledDiameterLeft.x, ledDiameterDimY);
+        profileCtx.lineTo(ledDiameterRight.x, ledDiameterDimY);
+        profileCtx.stroke();
+        drawArrowHead(profileCtx, ledDiameterLeft.x, ledDiameterDimY, 1, 0, 6);
+        drawArrowHead(profileCtx, ledDiameterRight.x, ledDiameterDimY, -1, 0, 6);
+        profileCtx.restore();
+        drawHandleLabel(
+          profileCtx,
+          `LED D ${Number(params.ledD).toFixed(1)} mm`,
+          0.5 * (ledDiameterLeft.x + ledDiameterRight.x),
+          ledDiameterDimY + 16,
+          "center"
+        );
+      }
+
+      const drainOverlay = buildDrainHoleSectionOverlay(params, bodyZ0, length, cavityResult.points);
+      if (drainOverlay?.polygon?.length >= 3) {
+        profileCtx.fillStyle = "rgba(255, 146, 102, 0.18)";
+        traceSectionPolygon(profileCtx, drainOverlay.polygon, projectPoint);
+        profileCtx.fill();
+        profileCtx.strokeStyle = "rgba(255, 146, 102, 0.95)";
+        profileCtx.lineWidth = 1.5;
+        traceSectionPolygon(profileCtx, drainOverlay.polygon, projectPoint);
+        profileCtx.stroke();
+      }
+      if (drainOverlay?.centerline?.length >= 2) {
+        profileCtx.save();
+        profileCtx.strokeStyle = "rgba(255, 196, 168, 0.95)";
+        profileCtx.lineWidth = 1.1;
+        profileCtx.setLineDash([6, 4]);
+        traceSectionPolyline(profileCtx, drainOverlay.centerline, projectPoint);
+        profileCtx.stroke();
+        profileCtx.restore();
+
+        const drainFoot = projectPoint(drainOverlay.centerline[0]);
+        const drainTip = projectPoint(drainOverlay.centerline[1]);
+        const drainLabelDx = drainTip.x >= drainFoot.x ? 38 : -38;
+        drawHandleLabel(
+          profileCtx,
+          `${Math.round(Number(params.drainAngleDeg))} deg`,
+          drainFoot.x + drainLabelDx,
+          drainFoot.y + 16,
+          "center"
+        );
+      }
+
+      const handles = [];
+      const mmPerPixel = 1.0 / scale;
+      const knobRadius = 9;
+
+      function registerHandle({
+        id,
+        x,
+        y,
+        axis,
+        axisSign,
+        input,
+        sensitivity,
+        cursor,
+        color,
+        label,
+        labelDx = 0,
+        labelDy = -18,
+        labelRotationDeg = 0,
+        dragMode,
+        inputX,
+        inputY,
+        sensitivityX,
+        sensitivityY,
+        axisSignX,
+        axisSignY
+      }) {
+        const handleOffset = getProfileHandleOffset(id);
+        const handleX = x + handleOffset.x;
+        const handleY = y + handleOffset.y;
+        handles.push({
+          id,
+          x: handleX,
+          y: handleY,
+          defaultX: x,
+          defaultY: y,
+          radius: knobRadius,
+          axis,
+          axisSign,
+          input,
+          sensitivity,
+          cursor: cursor || (axis === "x" ? "ew-resize" : (axis === "y" ? "ns-resize" : "move")),
+          dragMode,
+          inputX,
+          inputY,
+          sensitivityX,
+          sensitivityY,
+          axisSignX,
+          axisSignY
+        });
+
+        drawDirectionIndicator(profileCtx, handleX, handleY, axis, color);
+
+        profileCtx.save();
+        profileCtx.fillStyle = color;
+        profileCtx.strokeStyle = "rgba(10, 14, 18, 0.95)";
+        profileCtx.lineWidth = 2;
+        profileCtx.beginPath();
+        profileCtx.arc(handleX, handleY, knobRadius, 0, Math.PI * 2);
+        profileCtx.fill();
+        profileCtx.stroke();
+        profileCtx.restore();
+
+        drawHandleLabel(profileCtx, label, handleX + labelDx, handleY + labelDy, "center", labelRotationDeg);
+      }
+
+      const outerRightTop = projectPoint({ x: maxX, y: maxY });
+      const outerRightBottom = projectPoint({ x: maxX, y: minY });
+      const lengthDimX = outerRightTop.x + 46;
+      const lengthTop = { x: lengthDimX, y: outerRightTop.y };
+      const lengthBottom = { x: lengthDimX, y: outerRightBottom.y };
+      profileCtx.save();
+      profileCtx.strokeStyle = "rgba(255, 209, 102, 0.95)";
+      profileCtx.fillStyle = "rgba(255, 209, 102, 0.95)";
+      profileCtx.lineWidth = 1.5;
+      profileCtx.beginPath();
+      profileCtx.moveTo(outerRightTop.x + 8, outerRightTop.y);
+      profileCtx.lineTo(lengthTop.x, lengthTop.y);
+      profileCtx.moveTo(outerRightBottom.x + 8, outerRightBottom.y);
+      profileCtx.lineTo(lengthBottom.x, lengthBottom.y);
+      profileCtx.moveTo(lengthTop.x, lengthTop.y);
+      profileCtx.lineTo(lengthBottom.x, lengthBottom.y);
+      profileCtx.stroke();
+      drawArrowHead(profileCtx, lengthTop.x, lengthTop.y, 0, -1, 7);
+      drawArrowHead(profileCtx, lengthBottom.x, lengthBottom.y, 0, 1, 7);
+      profileCtx.restore();
+      const lengthHandleY = 0.5 * (lengthTop.y + lengthBottom.y);
+      registerHandle({
+        id: "profileLength",
+        x: lengthDimX,
+        y: lengthHandleY,
+        axis: "y",
+        input: ui.length,
+        sensitivity: mmPerPixel,
+        color: "rgba(255, 209, 102, 0.98)",
+        label: `Length ${length.toFixed(1)} mm`,
+        labelDx: -20,
+        labelDy: 0,
+        labelRotationDeg: -90
+      });
+
+      const outerLeftTop = projectPoint({ x: minX, y: maxY });
+      const thicknessDimY = outerLeftTop.y - 42;
+      const thicknessLeft = { x: outerLeftTop.x, y: thicknessDimY };
+      const thicknessRight = { x: outerRightTop.x, y: thicknessDimY };
+      profileCtx.save();
+      profileCtx.strokeStyle = "rgba(122, 220, 176, 0.95)";
+      profileCtx.fillStyle = "rgba(122, 220, 176, 0.95)";
+      profileCtx.lineWidth = 1.5;
+      profileCtx.beginPath();
+      profileCtx.moveTo(outerLeftTop.x, outerLeftTop.y - 8);
+      profileCtx.lineTo(thicknessLeft.x, thicknessLeft.y);
+      profileCtx.moveTo(outerRightTop.x, outerRightTop.y - 8);
+      profileCtx.lineTo(thicknessRight.x, thicknessRight.y);
+      profileCtx.moveTo(thicknessLeft.x, thicknessLeft.y);
+      profileCtx.lineTo(thicknessRight.x, thicknessRight.y);
+      profileCtx.stroke();
+      drawArrowHead(profileCtx, thicknessLeft.x, thicknessLeft.y, -1, 0, 7);
+      drawArrowHead(profileCtx, thicknessRight.x, thicknessRight.y, 1, 0, 7);
+      profileCtx.restore();
+      registerHandle({
+        id: "profileThickness",
+        x: 0.5 * (thicknessLeft.x + thicknessRight.x),
+        y: thicknessDimY,
+        axis: "x",
+        input: ui.thickness,
+        sensitivity: mmPerPixel,
+        color: "rgba(122, 220, 176, 0.98)",
+        label: `Thickness ${diameter.toFixed(1)} mm`,
+        labelDx: 0,
+        labelDy: -24
+      });
+
+      const buoyancyControlX = minX + boundsWidth * 0.18;
+      const buoyancyAnchor = projectPoint({ x: buoyancyControlX, y: minY });
+      registerHandle({
+        id: "buoyancy",
+        x: buoyancyAnchor.x,
+        y: buoyancyAnchor.y + 26,
+        axis: "x",
+        input: ui.buoyancy,
+        sensitivity: 0.2,
+        color: "rgba(122, 220, 176, 0.98)",
+        label: `Buoy ${Number(ui.buoyancy.value).toFixed(0)} g`,
+        labelDx: 0,
+        labelDy: 24
+      });
+
+      const profileCenterY = 0.5 * (minY + maxY);
+      const boreAnchor = projectPoint({ x: 0.0, y: profileCenterY });
+      registerHandle({
+        id: "bore",
+        x: boreAnchor.x,
+        y: boreAnchor.y,
+        axis: "x",
+        input: ui.bore,
+        sensitivity: mmPerPixel,
+        color: "rgba(255, 196, 104, 0.98)",
+        label: `Bore ${Number(ui.bore.value).toFixed(1)} mm`,
+        labelDx: 0,
+        labelDy: 22
+      });
+
+      const leftControlX = minX + boundsWidth * 0.1;
+      const rightControlX = maxX - boundsWidth * 0.1;
+      const pqAnchor = projectPoint({ x: leftControlX, y: profileCenterY });
+      const alphaBetaAnchor = projectPoint({ x: rightControlX, y: profileCenterY });
+
+      registerHandle({
+        id: "roundnessTaperPQ",
+        x: pqAnchor.x,
+        y: pqAnchor.y,
+        axis: "xy",
+        cursor: "move",
+        dragMode: "bi2d",
+        inputX: ui.p,
+        inputY: ui.q,
+        sensitivityX: 0.01,
+        sensitivityY: 0.01,
+        axisSignX: 1,
+        axisSignY: -1,
+        color: "rgba(142, 214, 255, 0.98)",
+        label: `p ${Number(ui.p.value).toFixed(2)} / q ${Number(ui.q.value).toFixed(2)}`,
+        labelDx: 0,
+        labelDy: 24
+      });
+      registerHandle({
+        id: "alphaBetaBi",
+        x: alphaBetaAnchor.x,
+        y: alphaBetaAnchor.y,
+        axis: "xy",
+        cursor: "move",
+        dragMode: "bi2d",
+        inputX: ui.alpha,
+        inputY: ui.beta,
+        sensitivityX: 0.01,
+        sensitivityY: 0.02,
+        axisSignX: 1,
+        axisSignY: -1,
+        color: "rgba(244, 168, 136, 0.98)",
+        label: `α ${Number(ui.alpha.value).toFixed(2)} / β ${Number(ui.beta.value).toFixed(2)}`,
+        labelDx: 0,
+        labelDy: 24
+      });
+
+      const curveTargets = [];
+      if (drainOverlay?.centerline?.length >= 2) {
+        curveTargets.push({
+          id: "drainAngleCurve",
+          axis: "angle",
+          dragMode: "drainAngle",
+          input: ui.drainAngle,
+          cursor: "crosshair",
+          polyline: drainOverlay.centerline.map(projectPoint),
+          anchor: projectPoint(drainOverlay.centerline[0]),
+          hitRadius: 12,
+          dragThresholdPx: 6
+        });
+      }
+      if (ledLengthLine.length >= 2) {
+        curveTargets.push({
+          id: "ledLengthCurve",
+          axis: "y",
+          input: ui.ledLen,
+          sensitivity: mmPerPixel,
+          cursor: "ns-resize",
+          polyline: ledLengthLine.map(projectPoint),
+          hitRadius: 12,
+          dragThresholdPx: 4
+        });
+      }
+      if (ledDiameterLine.length >= 2) {
+        curveTargets.push({
+          id: "ledDiameterCurve",
+          axis: "x",
+          input: ui.ledD,
+          sensitivity: mmPerPixel,
+          cursor: "ew-resize",
+          polyline: ledDiameterLine.map(projectPoint),
+          hitRadius: 12,
+          dragThresholdPx: 4
+        });
+      }
+      if (baseFilletBoundaryHalf.length >= 2) {
+        curveTargets.push({
+          id: "baseFilletCurveRight",
+          axis: "y",
+          axisSign: -1,
+          input: ui.postBaseFillet,
+          sensitivity: mmPerPixel * 0.2,
+          cursor: "ns-resize",
+          polyline: baseFilletBoundaryHalf.map(projectPoint),
+          hitRadius: 12,
+          dragThresholdPx: 6
+        });
+        curveTargets.push({
+          id: "baseFilletCurveLeft",
+          axis: "y",
+          axisSign: -1,
+          input: ui.postBaseFillet,
+          sensitivity: mmPerPixel * 0.2,
+          cursor: "ns-resize",
+          polyline: baseFilletBoundaryHalf.map(projectMirrorPoint),
+          hitRadius: 12,
+          dragThresholdPx: 6
+        });
+      }
+      if (tailFilletBoundaryHalf.length >= 2) {
+        curveTargets.push({
+          id: "tailFilletCurveRight",
+          axis: "y",
+          axisSign: 1,
+          input: ui.postTailFillet,
+          sensitivity: mmPerPixel * 0.2,
+          cursor: "ns-resize",
+          polyline: tailFilletBoundaryHalf.map(projectPoint),
+          hitRadius: 12,
+          dragThresholdPx: 6
+        });
+        curveTargets.push({
+          id: "tailFilletCurveLeft",
+          axis: "y",
+          axisSign: 1,
+          input: ui.postTailFillet,
+          sensitivity: mmPerPixel * 0.2,
+          cursor: "ns-resize",
+          polyline: tailFilletBoundaryHalf.map(projectMirrorPoint),
+          hitRadius: 12,
+          dragThresholdPx: 6
+        });
+      }
+
+      state.profileFilletInteraction = {
+        handles,
+        curveTargets,
+        width,
+        height
+      };
+    }
+
+    function onProfileInteractiveChange() {
+      ui.preset.value = "custom";
+      updateLabels();
+      drawProfile();
+      scheduleBrowserStateSave();
+      scheduleBuild("profile-drag");
+    }
+
+    function onProfilePointerDown(event) {
+      if (event.button !== 0 && event.button !== 2) {
+        return;
+      }
+      const point = getProfileCanvasPoint(event);
+      const isLayoutDrag = event.button === 2;
+      const handle = isLayoutDrag ? getProfileKnobAt(point) : getProfileHandleAt(point);
+      if (!handle) {
+        updateProfileCursor(point);
+        return;
+      }
+      event.preventDefault();
+      profileCanvas.setPointerCapture(event.pointerId);
+      if (isLayoutDrag) {
+        const startOffset = getProfileHandleOffset(handle.id);
+        state.profileFilletDrag = {
+          pointerId: event.pointerId,
+          handleId: handle.id,
+          axis: handle.axis,
+          cursor: "move",
+          startX: point.x,
+          startY: point.y,
+          startOffset,
+          active: true,
+          mode: "layout"
+        };
+      } else {
+        state.profileFilletDrag = {
+          pointerId: event.pointerId,
+          handleId: handle.id,
+          axis: handle.axis,
+          cursor: handle.cursor,
+          startX: point.x,
+          startY: point.y,
+          startValue: getProfileHandleStartValue(handle),
+          active: false,
+          mode: "value"
+        };
+      }
+      updateProfileCursor(point);
+    }
+
+    function onProfilePointerMove(event) {
+      const point = getProfileCanvasPoint(event);
+      const drag = state.profileFilletDrag;
+      if (!drag || drag.pointerId !== event.pointerId) {
+        updateProfileCursor(point);
+        return;
+      }
+
+      const handle = getProfileDragTargetById(drag.handleId);
+      if (!handle) {
+        return;
+      }
+      if (drag.mode === "layout") {
+        const changed = setProfileHandleOffset(
+          handle.id,
+          drag.startOffset.x + (point.x - drag.startX),
+          drag.startOffset.y + (point.y - drag.startY)
+        );
+        if (changed) {
+          drawProfile();
+          scheduleBrowserStateSave();
+        }
+        updateProfileCursor(point);
+        return;
+      }
+      if (!drag.active) {
+        const activationThresholdPx = Math.max(0, Number(handle.dragThresholdPx) || 0);
+        const travel = Math.hypot(point.x - drag.startX, point.y - drag.startY);
+        if (travel <= activationThresholdPx) {
+          updateProfileCursor(point);
+          return;
+        }
+        drag.active = true;
+        drag.startX = point.x;
+        drag.startY = point.y;
+        drag.startValue = getProfileHandleStartValue(handle);
+        updateProfileCursor(point);
+        return;
+      }
+      const changed = applyProfileHandleDrag(
+        handle,
+        drag.startValue,
+        point.x - drag.startX,
+        point.y - drag.startY,
+        point
+      );
+      if (changed) {
+        onProfileInteractiveChange();
+      } else {
+        updateProfileCursor(point);
+      }
+    }
+
+    function onProfilePointerUp(event) {
+      if (state.profileFilletDrag && state.profileFilletDrag.pointerId === event.pointerId) {
+        state.profileFilletDrag = null;
+      }
+      if (profileCanvas.hasPointerCapture(event.pointerId)) {
+        profileCanvas.releasePointerCapture(event.pointerId);
+      }
+      updateProfileCursor(getProfileCanvasPoint(event));
+    }
+
+    function onProfilePointerCancel(event) {
+      if (state.profileFilletDrag && state.profileFilletDrag.pointerId === event.pointerId) {
+        state.profileFilletDrag = null;
+      }
+      updateProfileCursor();
+    }
+
+    function onProfileContextMenu(event) {
+      const point = getProfileCanvasPoint(event);
+      if (state.profileFilletDrag?.mode === "layout" || getProfileKnobAt(point)) {
+        event.preventDefault();
+      }
+    }
+
+    function sanitizeFileToken(value) {
+      return String(value)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "custom";
+    }
+
+    function buildExportFilename(ext) {
+      const buoyancy = Number(ui.buoyancy?.value);
+      let length = Number(state.currentMetrics?.length);
+      if (!Number.isFinite(length)) {
+        try {
+          length = Number(solveOuterDimensions(getParams()).length);
+        } catch {
+          length = Number.NaN;
+        }
+      }
+      const buoyancyToken = Number.isFinite(buoyancy) ? `${Math.round(buoyancy)}g` : "custom";
+      const lengthToken = Number.isFinite(length) ? `${Math.round(length)}mm` : "model";
+      return `${sanitizeFileToken(`${buoyancyToken}_${lengthToken}`)}.${ext}`;
+    }
+
+    function buildSavePayload() {
+      const liveSectionBoxCurrent = serializeSectionBoxBounds(state.sectionBoxCurrent);
+      const persistedSectionBoxCurrent = liveSectionBoxCurrent
+        || cloneSerializedSectionBoxBounds(state.pendingViewportState?.sectionBoxCurrent);
+      return {
+        type: "custom-float-maker-state",
+        version: 2,
+        savedAt: new Date().toISOString(),
+        params: getParams(),
+        profileUi: {
+          handleOffsets: sanitizeProfileHandleOffsets(state.profileHandleOffsets)
+        },
+        camera: {
+          position: state.camera ? state.camera.position.toArray() : [120, 90, 140],
+          target: state.controls ? state.controls.target.toArray() : [0, 35, 0]
+        },
+        viewport: {
+          materialPreset: getPreviewMaterialKey(),
+          colorPreset: getPreviewColorKey(),
+          transparentView: !!ui.transparentView?.checked,
+          clipBoxEdit: !!ui.clipBoxEdit?.checked,
+          sectionBoxCurrent: persistedSectionBoxCurrent
+        }
+      };
+    }
+
+    function saveBrowserStateNow() {
+      try {
+        localStorage.setItem(BROWSER_STORAGE_KEY, JSON.stringify(buildSavePayload()));
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function scheduleBrowserStateSave() {
+      if (state.autosaveTimer) {
+        clearTimeout(state.autosaveTimer);
+      }
+      state.autosaveTimer = setTimeout(() => {
+        state.autosaveTimer = null;
+        saveBrowserStateNow();
+      }, 150);
+    }
+
+    function downloadBlob(filename, blob) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function validateLoadedParams(raw) {
+      if (!raw || typeof raw !== "object") {
+        throw new Error("Missing params object.");
+      }
+      const params = {
+        preset: typeof raw.preset === "string" ? raw.preset : "custom",
+        profileLength: Number(raw.profileLength),
+        profileThickness: raw.profileThickness !== undefined
+          ? Number(raw.profileThickness)
+          : FIXED_PROFILE_THICKNESS,
+        p: Number(raw.p),
+        q: Number(raw.q),
+        alpha: Number(raw.alpha),
+        beta: Number(raw.beta),
+        buoyancyG: Number(raw.buoyancyG),
+        wallThickness: Number(raw.wallThickness),
+        bore: Number(raw.bore),
+        tripodAttachZ: Number(raw.tripodAttachZ),
+        tripodAttachZ2: Number(raw.tripodAttachZ2),
+        tripodOffsetDeg: raw.tripodOffsetDeg !== undefined ? Number(raw.tripodOffsetDeg) : 60,
+        legThickness: raw.legThickness !== undefined ? Number(raw.legThickness) : 1.6,
+        baseThickness: raw.baseThickness !== undefined
+          ? Number(raw.baseThickness)
+          : (raw.ringHeight !== undefined ? Number(raw.ringHeight) : 1.2),
+        floatBaseGap: raw.floatBaseGap !== undefined ? Number(raw.floatBaseGap) : 1.0,
+        baseRadiusFactor: raw.baseRadiusFactor !== undefined ? Number(raw.baseRadiusFactor) : 0.3,
+        ledD: Number(raw.ledD),
+        ledLen: Number(raw.ledLen),
+        drainAngleDeg: Number(raw.drainAngleDeg),
+        drainHoleDiameter: Number(raw.drainHoleDiameter),
+        postBaseFilletRadius: raw.postBaseFilletRadius !== undefined ? Math.abs(Number(raw.postBaseFilletRadius)) : 1,
+        postTailFilletRadius: raw.postTailFilletRadius !== undefined ? Math.abs(Number(raw.postTailFilletRadius)) : 2,
+        noBase: !!raw.noBase,
+        invertBase: !!raw.invertBase,
+        noDrain: !!raw.noDrain
+      };
+      if (!Number.isFinite(params.profileLength) || params.profileLength <= 0) throw new Error("Invalid profile length.");
+      if (!Number.isFinite(params.profileThickness) || params.profileThickness <= 0) throw new Error("Invalid profile thickness.");
+      if (!Number.isFinite(params.p) || params.p <= 0) throw new Error("Invalid p.");
+      if (!Number.isFinite(params.q) || params.q <= 0) throw new Error("Invalid q.");
+      if (!Number.isFinite(params.buoyancyG) || params.buoyancyG <= 0) throw new Error("Invalid buoyancy.");
+      if (!Number.isFinite(params.wallThickness) || params.wallThickness <= 0) throw new Error("Invalid wall thickness.");
+      if (!Number.isFinite(params.bore) || params.bore <= 0) throw new Error("Invalid bore.");
+      if (!Number.isFinite(params.tripodOffsetDeg)) throw new Error("Invalid tripod offset.");
+      if (!Number.isFinite(params.legThickness) || params.legThickness <= 0) throw new Error("Invalid leg thickness.");
+      if (!Number.isFinite(params.baseThickness) || params.baseThickness <= 0) throw new Error("Invalid base thickness.");
+      if (!Number.isFinite(params.floatBaseGap) || params.floatBaseGap < 0) throw new Error("Invalid base gap.");
+      if (!Number.isFinite(params.baseRadiusFactor) || params.baseRadiusFactor <= 0) throw new Error("Invalid base radius factor.");
+      if (!Number.isFinite(params.postBaseFilletRadius)) throw new Error("Invalid post base fillet.");
+      if (!Number.isFinite(params.postTailFilletRadius)) throw new Error("Invalid post tail fillet.");
+      return params;
+    }
+
+    function applyLoadedState(payload) {
+      if (payload && (payload.profileUi !== undefined || payload.profileHandleOffsets !== undefined)) {
+        state.profileHandleOffsets = sanitizeProfileHandleOffsets(
+          payload.profileUi?.handleOffsets ?? payload.profileHandleOffsets
+        );
+      }
+      const rawParams = payload && payload.params ? payload.params : payload;
+      const params = validateLoadedParams(rawParams);
+      setParams(params);
+      if (payload && payload.camera && state.camera && state.controls) {
+        const { position, target } = payload.camera;
+        if (Array.isArray(position) && position.length === 3) {
+          state.camera.position.fromArray(position.map(Number));
+        }
+        if (Array.isArray(target) && target.length === 3) {
+          state.controls.target.fromArray(target.map(Number));
+        }
+        state.controls.update();
+        state.restoreViewportOnNextRender = true;
+      }
+      if (payload && payload.viewport) {
+        if (payload.viewport.materialPreset !== undefined && PREVIEW_MATERIALS[payload.viewport.materialPreset]) {
+          ui.materialPreset.value = payload.viewport.materialPreset;
+        }
+        if (payload.viewport.colorPreset !== undefined && Object.prototype.hasOwnProperty.call(PREVIEW_COLORS, payload.viewport.colorPreset)) {
+          ui.colorPreset.value = payload.viewport.colorPreset;
+        }
+        if (payload.viewport.transparentView !== undefined) {
+          ui.transparentView.checked = !!payload.viewport.transparentView;
+        }
+        if (payload.viewport.clipBoxEdit !== undefined) {
+          ui.clipBoxEdit.checked = !!payload.viewport.clipBoxEdit;
+        }
+        state.pendingViewportState = payload.viewport;
+      }
+      setSectionEditMode(!!ui.clipBoxEdit?.checked);
+      applyCurrentPreviewMaterial();
+    }
+
+    function tryLoadBrowserState() {
+      try {
+        const raw = localStorage.getItem(BROWSER_STORAGE_KEY);
+        if (!raw) {
+          return false;
+        }
+        applyLoadedState(JSON.parse(raw));
+        // Ensure cut box is restored after loading
+        applyPendingViewportStateToCurrentMesh();
+        return true;
+      } catch (err) {
+        console.error(err);
+        return false;
+      }
+    }
+
+    function writeAsciiStlFromMesh(mesh) {
+      const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+      const position = geometry.getAttribute("position");
+      const normalAttr = geometry.getAttribute("normal");
+      const matrix = mesh.matrixWorld.clone();
+      const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      const c = new THREE.Vector3();
+      const n = new THREE.Vector3();
+      const lines = ["solid customfloatmaker"];
+
+      for (let i = 0; i < position.count; i += 3) {
+        a.fromBufferAttribute(position, i).applyMatrix4(matrix);
+        b.fromBufferAttribute(position, i + 1).applyMatrix4(matrix);
+        c.fromBufferAttribute(position, i + 2).applyMatrix4(matrix);
+        if (normalAttr) {
+          n.fromBufferAttribute(normalAttr, i).applyMatrix3(normalMatrix).normalize();
+        } else {
+          n.subVectors(c, b).cross(a.clone().sub(b)).normalize();
+        }
+        lines.push(
+          `facet normal ${n.x} ${n.y} ${n.z}`,
+          `  outer loop`,
+          `    vertex ${a.x} ${a.y} ${a.z}`,
+          `    vertex ${b.x} ${b.y} ${b.z}`,
+          `    vertex ${c.x} ${c.y} ${c.z}`,
+          `  endloop`,
+          `endfacet`
+        );
+      }
+      lines.push("endsolid customfloatmaker");
+      geometry.dispose();
+      return lines.join("\n");
+    }
+
+    async function exportStep() {
+      if (!state.cadWorker || !state.workerReady || !state.currentMetrics) {
+        setStatus("Generate a model before exporting STEP.", "warn");
+        return;
+      }
+
+      try {
+        const requestId = ++state.workerRequestSeq;
+        const data = await new Promise((resolve, reject) => {
+          state.pendingStepExports.set(requestId, { resolve, reject });
+          state.cadWorker.postMessage({ type: "export-step", requestId });
+        });
+        const name = buildExportFilename("step");
+        downloadBlob(name, new Blob([data], { type: "application/step" }));
+        setStatus(`Exported ${name}`, "ok");
+      } catch (err) {
+        console.error(err);
+        setStatus(`STEP export failed: ${err.message}`, "err");
+      }
+    }
+
+    async function exportStl() {
+      if (!state.cadWorker || !state.workerReady || !state.currentMetrics) {
+        setStatus("Generate a model before exporting STL.", "warn");
+        return;
+      }
+      try {
+        const requestId = ++state.workerRequestSeq;
+        const stl = await new Promise((resolve, reject) => {
+          state.pendingStlExports.set(requestId, { resolve, reject });
+          state.cadWorker.postMessage({ type: "export-stl", requestId });
+        });
+        const name = buildExportFilename("stl");
+        downloadBlob(name, new Blob([stl], { type: "model/stl" }));
+        setStatus(`Exported ${name}`, "ok");
+      } catch (err) {
+        console.error(err);
+        setStatus(`STL export failed: ${err.message}`, "err");
+      }
+    }
+
+    async function generateModel(reason = "manual") {
+      if (!state.workerReady || !state.cadWorker) {
+        setStatus("CAD worker is still loading.", "warn");
+        return;
+      }
+      const buildVersion = ++state.buildVersion;
+      state.fitViewOnNextBuildStage = !state.currentMesh && !state.restoreViewportOnNextRender;
+      setStatus(`Generating ${reason} model...`);
+      ui.generateBtn.disabled = true;
+      ui.exportStepBtn.disabled = true;
+      ui.exportStlBtn.disabled = true;
+      try {
+        const params = getParams();
+        await yieldToBrowser(`Generating ${reason} model...`);
+        state.currentShape = null;
+        state.currentMetrics = null;
+        state.cadWorker.postMessage({ type: "generate", jobId: buildVersion, params });
+      } catch (err) {
+        console.error(err);
+        state.fitViewOnNextBuildStage = false;
+        ui.generateBtn.disabled = false;
+        setStatus(`CAD build failed: ${err.message}`, "err");
+      }
+    }
+
+    function scheduleBuild(reason = "changed") {
+      if (!state.ocReady) return;
+      if (!AUTO_GENERATE_CAD) {
+        markModelDirty(reason);
+        return;
+      }
+      if (state.buildTimer) {
+        clearTimeout(state.buildTimer);
+      }
+      state.buildTimer = setTimeout(() => {
+        state.buildTimer = null;
+        void generateModel(reason);
+      }, 350);
+    }
+
+    [
+      ui.length,
+      ui.thickness,
+      ui.p,
+      ui.q,
+      ui.alpha,
+      ui.beta,
+      ui.buoyancy,
+      ui.wallThickness,
+      ui.bore,
+      ui.tripodAttachZ,
+      ui.tripodAttachZ2,
+      ui.tripodOffsetDeg,
+      ui.legThickness,
+      ui.baseThickness,
+      ui.floatBaseGap,
+      ui.baseRadiusFactor,
+      ui.ledD,
+      ui.ledLen,
+      ui.drainAngle,
+      ui.drainDiameter,
+      ui.postBaseFillet,
+      ui.postTailFillet
+    ].forEach((el) => {
+      el.addEventListener("input", () => {
+        if (el === ui.buoyancy) {
+          setInputNumericValue(ui.buoyancy, Number(ui.buoyancy.value));
+        }
+        ui.preset.value = "custom";
+        updateLabels();
+        drawProfile();
+        scheduleBrowserStateSave();
+        scheduleBuild("slider");
+      });
+    });
+
+    [ui.noBase, ui.invertBase, ui.noDrain].forEach((el) => {
+      el.addEventListener("change", () => {
+        drawProfile();
+        scheduleBrowserStateSave();
+        scheduleBuild("toggle");
+      });
+    });
+
+    ui.preset.addEventListener("change", () => {
+      applyPreset(ui.preset.value);
+      scheduleBrowserStateSave();
+      scheduleBuild("preset");
+    });
+
+    ui.generateBtn.addEventListener("click", () => { void generateModel("manual"); });
+    ui.exportStepBtn.addEventListener("click", exportStep);
+    ui.exportStlBtn.addEventListener("click", exportStl);
+    ui.fitBtn.addEventListener("click", () => {
+      fitCameraToCurrentMesh();
+      scheduleBrowserStateSave();
+    });
+    ui.clipBoxEdit.addEventListener("change", () => {
+      setSectionEditMode(ui.clipBoxEdit.checked);
+      scheduleBrowserStateSave();
+    });
+    ui.materialPreset.addEventListener("change", () => {
+      applyCurrentPreviewMaterial();
+      scheduleBrowserStateSave();
+    });
+    ui.colorPreset.addEventListener("change", () => {
+      applyCurrentPreviewMaterial();
+      scheduleBrowserStateSave();
+    });
+    ui.transparentView.addEventListener("change", () => {
+      applyMeshTransparency();
+      scheduleBrowserStateSave();
+    });
+
+    ui.saveBtn.addEventListener("click", () => {
+      const payload = buildSavePayload();
+      const fileName = buildExportFilename("json");
+      downloadBlob(fileName, new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+      setStatus(`Saved ${fileName}`, "ok");
+    });
+
+    ui.loadBtn.addEventListener("click", () => ui.loadInput.click());
+    ui.loadInput.addEventListener("change", async () => {
+      const [file] = ui.loadInput.files || [];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        applyLoadedState(payload);
+        saveBrowserStateNow();
+        scheduleBuild("loaded");
+        setStatus(`Loaded ${file.name}. Click Generate CAD.`, "ok");
+      } catch (err) {
+        console.error(err);
+        setStatus(`Load failed: ${err.message}`, "err");
+      } finally {
+        ui.loadInput.value = "";
+      }
+    });
+
+    window.addEventListener("resize", drawProfile);
+    profileCanvas.style.touchAction = "none";
+    profileCanvas.addEventListener("pointerdown", onProfilePointerDown);
+    profileCanvas.addEventListener("pointermove", onProfilePointerMove);
+    profileCanvas.addEventListener("pointerup", onProfilePointerUp);
+    profileCanvas.addEventListener("pointercancel", onProfilePointerCancel);
+    profileCanvas.addEventListener("contextmenu", onProfileContextMenu);
+    profileCanvas.addEventListener("pointerleave", (event) => {
+      if (!state.profileFilletDrag) {
+        updateProfileCursor(getProfileCanvasPoint(event));
+      }
+    });
+    if (typeof ResizeObserver !== "undefined") {
+      const profileResizeObserver = new ResizeObserver(() => {
+        drawProfile();
+      });
+      profileResizeObserver.observe(profileCanvas);
+      if (profileCanvas.parentElement) {
+        profileResizeObserver.observe(profileCanvas.parentElement);
+      }
+    }
+
+    setupViewport();
+    if (!tryLoadBrowserState()) {
+      updateLabels();
+      applyPreset("custom");
+      drawProfile();
+      saveBrowserStateNow();
+    }
+
+    try {
+      setStatus("Loading CAD worker...");
+      initCadWorker();
+    } catch (err) {
+      console.error(err);
+      setStatus(
+        `CAD worker failed to load: ${err.message}\nUse serve_customfloatmaker.py and open the localhost URL.`,
+        "err"
+      );
+    }
+  </script>
+</body>
+</html>
